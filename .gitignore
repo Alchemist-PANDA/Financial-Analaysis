@@ -50,3 +50,4 @@ app/financial_agent.db
 financial_agent.db
 frontend-next/.next/
 frontend-next/node_modules/
+PROD_VARIABLES.md

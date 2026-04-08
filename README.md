@@ -1,3 +1,13 @@
+---
+title: Financial Analysis Terminal
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🤖 Financial Snapshot Agent
 
 A beginner-friendly AI agent that takes raw company financials, calculates key financial metrics, and uses an LLM to generate a professional analyst-style report — all driven by a **LangGraph** pipeline.
