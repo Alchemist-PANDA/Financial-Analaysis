@@ -5,8 +5,14 @@ No AI here — just math. Takes raw company data and returns
 a dict of computed ratios used by the agent for analysis.
 """
 
-
-import math
+def numeric_value(data: dict, key: str, default: float = 0.0) -> float:
+    value = data.get(key, default)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 def calculate_metrics(historical_data: list[dict]) -> dict:
     """
@@ -18,17 +24,17 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
 
     years_metrics = []
     for data in historical_data:
-        rev = data["revenue"]
-        ebitda = data["ebitda"]
-        ni = data["net_income"]
-        cash = data["cash"]
-        debt = data["debt"]
-        assets = data.get("total_assets", 1.0) # Default to 1 to avoid div by zero
-        equity = data.get("equity", 1.0)
-        wc = data.get("working_capital", 0.0)
-        re = data.get("retained_earnings", 0.0)
-        ebit = data.get("ebit", 0.0)
-        mve = data.get("market_value_equity", 0.0)
+        rev = numeric_value(data, "revenue")
+        ebitda = numeric_value(data, "ebitda")
+        ni = numeric_value(data, "net_income")
+        cash = numeric_value(data, "cash")
+        debt = numeric_value(data, "debt")
+        assets = numeric_value(data, "total_assets", 1.0) or 1.0
+        equity = numeric_value(data, "equity", 1.0) or 1.0
+        wc = numeric_value(data, "working_capital")
+        re = numeric_value(data, "retained_earnings")
+        ebit = numeric_value(data, "ebit")
+        mve = numeric_value(data, "market_value_equity")
         
         ebitda_margin = round((ebitda / rev) * 100, 1) if rev else 0
         net_margin    = round((ni / rev) * 100, 1) if rev else 0
@@ -41,9 +47,9 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
         roe = round(net_margin * asset_turnover * equity_multiplier, 1)
 
         # Efficiency Metrics
-        ar = data.get("accounts_receivable", 0.0)
-        inv = data.get("inventory", 0.0)
-        capex = data.get("capex", 0.0)
+        ar = numeric_value(data, "accounts_receivable")
+        inv = numeric_value(data, "inventory")
+        capex = numeric_value(data, "capex")
         
         dso = round((ar / rev) * 365, 0) if rev > 0 else 0
         inv_turnover = round(rev / inv, 1) if inv > 0 else 0
@@ -60,6 +66,8 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
         years_metrics.append({
             "year": data["year"],
             "revenue": rev,
+            "ebitda": ebitda,
+            "net_income": ni,
             "ebitda_margin": ebitda_margin,
             "net_margin": net_margin,
             "net_debt": net_debt,
@@ -75,15 +83,23 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
 
     # 1. Revenue CAGR Calculation
     years_count = len(historical_data)
-    y0_rev = historical_data[-1]["revenue"]
-    y_first_rev = historical_data[0]["revenue"]
-    cagr = round(((y0_rev / y_first_rev) ** (1 / (years_count - 1)) - 1) * 100, 1)
+    y0_rev = numeric_value(historical_data[-1], "revenue")
+    y_first_rev = numeric_value(historical_data[0], "revenue")
+    if y_first_rev <= 0:
+        cagr = 0.0
+    else:
+        cagr = round(((y0_rev / y_first_rev) ** (1 / (years_count - 1)) - 1) * 100, 1)
 
     # ... [keep trajectory logic] ...
     recent_5_years = historical_data[-5:]
     growths = []
     for i in range(1, 5):
-        g = (recent_5_years[i]["revenue"] / recent_5_years[i-1]["revenue"]) - 1
+        prev_revenue = numeric_value(recent_5_years[i - 1], "revenue")
+        current_revenue = numeric_value(recent_5_years[i], "revenue")
+        if prev_revenue <= 0:
+            g = 0
+        else:
+            g = (current_revenue / prev_revenue) - 1
         growths.append(g)
     
     if all(growths[i] > growths[i-1] for i in range(1, 4)): trajectory = "ACCELERATING"

@@ -10,6 +10,8 @@ if DATABASE_URL:
     # If using PostgreSQL (e.g. Neon), ensure the protocol is correct for SQLAlchemy async
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql://") and "postgresql+asyncpg://" not in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 else:
     # Default to local SQLite
     DB_FILE = "financial_agent.db"

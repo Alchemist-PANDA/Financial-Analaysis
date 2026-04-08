@@ -8,7 +8,7 @@ import ComparisonTerminal from "@/components/ComparisonTerminal";
 export default function Home() {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [currentView, setCurrentView] = useState('live');
+  const [currentView, setCurrentView] = useState<'live' | 'compare'>('live');
 
   const handleAnalysisComplete = () => {
     setRefreshTrigger(prev => prev + 1);

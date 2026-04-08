@@ -1,7 +1,7 @@
 import sys
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__))) # Root dir for co
 from app.graph import graph
 from config import APP_NAME, APP_VERSION
 from app.database import init_db, get_db, async_session
-from app.models import AnalysisHistory, Watchlist
+from app.models import AnalysisHistory
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
             for item in SEED_DATA:
                 history = AnalysisHistory(
                     ticker=item["ticker"],
-                    company_name=item["name"],
+                    company_name=item["company_name"],
                     archetype=item["archetype"],
                     analysis_data=item["data"]
                 )
@@ -62,9 +62,6 @@ frontend_env = os.getenv("FRONTEND_URL")
 if frontend_env:
     # Support comma-separated list of origins
     origins.extend([url.strip() for url in frontend_env.split(",") if url.strip()])
-else:
-    # Fallback/Safety for local dev if no env is set
-    origins.append("*")
 
 app.add_middleware(
     CORSMiddleware,
@@ -76,33 +73,149 @@ app.add_middleware(
 
 # ── Analysis Helper ──────────────────────────────────────────────────────────
 
-async def run_analysis_for_ticker(ticker: str, db: Optional[AsyncSession] = None, manual_data: Optional[dict] = None):
-    """
-    Bridge to the actual LangGraph agent. 
-    Invokes the full pipeline to calculate 'Senior Tier' metrics dynamically.
-    """
+def derive_color_signal(z_score: float) -> str:
+    if z_score > 2.99:
+        return "GREEN"
+    if z_score > 1.8:
+        return "YELLOW"
+    return "RED"
+
+
+def default_retail_verdict(analysis: dict, color_signal: str) -> str:
+    if analysis.get("retail_verdict"):
+        return analysis["retail_verdict"]
+    if color_signal == "GREEN":
+        return "Financial profile is resilient and lower risk."
+    if color_signal == "RED":
+        return "High-risk setup. Capital loss risk is elevated."
+    return "Mixed fundamentals. Position size with caution."
+
+
+def build_response_payload(ticker: str, company_name: str, metrics: dict, analysis: dict) -> dict:
+    z_score_raw = metrics.get("current_z_score")
+    if z_score_raw is None:
+        solvency = str(metrics.get("solvency_signal", "")).upper()
+        if solvency == "SAFE":
+            z_score_raw = 3.1
+        elif solvency in {"GREY_ZONE", "YELLOW"}:
+            z_score_raw = 2.1
+        else:
+            z_score_raw = 1.2
+    color_signal = derive_color_signal(float(z_score_raw or 0.0))
+    normalized_analysis = dict(analysis or {})
+    flags = normalized_analysis.get("flags", [])
+    if not isinstance(flags, list):
+        normalized_analysis["flags"] = []
+    else:
+        normalized_analysis["flags"] = flags
+    normalized_analysis["retail_verdict"] = default_retail_verdict(normalized_analysis, color_signal)
+    return {
+        "ticker": ticker.upper(),
+        "company_name": company_name,
+        "metrics": metrics,
+        "analysis": normalized_analysis,
+        "color_signal": color_signal,
+    }
+
+
+def score_for_comparison(payload: dict) -> float:
+    metrics = payload.get("metrics", {})
+    z_score = float(metrics.get("current_z_score", 0.0) or 0.0)
+    cagr = float(metrics.get("revenue_cagr_pct", 0.0) or 0.0)
+    fcf = float(metrics.get("current_fcf_conversion_pct", 0.0) or 0.0)
+    roe = float(metrics.get("current_roe", 0.0) or 0.0)
+    dso = float(metrics.get("current_dso", 0.0) or 0.0)
+
+    return (z_score * 4.0) + (cagr * 0.8) + (fcf * 0.2) + (roe * 0.15) - (max(dso - 60.0, 0.0) * 0.15)
+
+
+def build_comparison_verdict(left: dict, right: dict) -> dict:
+    left_score = score_for_comparison(left)
+    right_score = score_for_comparison(right)
+    if left_score >= right_score:
+        winner = left["ticker"]
+        loser = right["ticker"]
+    else:
+        winner = right["ticker"]
+        loser = left["ticker"]
+    summary = (
+        f"shows the stronger blended solvency and cash quality profile versus {loser}. "
+        f"Review both verdict notes before position sizing."
+    )
+    return {"winner": winner, "summary": summary}
+
+
+def fallback_analysis_from_metrics(metrics: dict) -> dict:
+    z_score = float(metrics.get("current_z_score", 0.0) or 0.0)
+    margin_signal = str(metrics.get("margin_signal", "STABLE")).upper()
+    debt_signal = str(metrics.get("debt_signal", "STABLE")).upper()
+    revenue_cagr = float(metrics.get("revenue_cagr_pct", 0.0) or 0.0)
+
+    if z_score >= 3.0 and revenue_cagr > 8:
+        archetype = "COMPOUNDER"
+        summary = "Strong solvency and growth momentum suggest resilient fundamentals."
+    elif z_score < 1.8:
+        archetype = "DISTRESSED"
+        summary = "Balance-sheet stress is elevated and downside risk is material."
+    elif margin_signal == "COLLAPSING":
+        archetype = "MARGIN SCISSOR"
+        summary = "Revenue quality is weakening as margins compress across the period."
+    elif debt_signal == "OVERLEVERAGED":
+        archetype = "VALUE TRAP"
+        summary = "Leverage is high versus earnings capacity; recovery quality is uncertain."
+    else:
+        archetype = "TRANSITION"
+        summary = "Signals are mixed, so treat this as a selective-risk setup."
+
+    flags = []
+    if z_score < 1.8:
+        flags.append({"emoji": "!", "name": "Solvency Risk", "explanation": "Altman Z-Score is in distress range."})
+    if debt_signal == "OVERLEVERAGED":
+        flags.append({"emoji": "!", "name": "Leverage Pressure", "explanation": "Debt load is high relative to EBITDA."})
+    if not flags:
+        flags.append({"emoji": "+", "name": "Operational Stability", "explanation": "No severe structural stress detected."})
+
+    return {
+        "pattern_diagnosis": (
+            f"Fallback diagnosis generated from quantitative signals. Revenue CAGR is {revenue_cagr:.1f}%, "
+            f"margin trend is {margin_signal}, and solvency is anchored by a Z-score of {z_score:.2f}."
+        ),
+        "flags": flags,
+        "analyst_verdict_archetype": archetype,
+        "analyst_verdict_summary": summary,
+    }
+
+
+async def run_analysis_for_ticker(
+    ticker: str,
+    db: Optional[AsyncSession] = None,
+    manual_data: Optional[dict] = None,
+    save_history: bool = True,
+) -> dict:
+    requested_ticker = (ticker or "N/A").upper()
+
     if manual_data:
-        # 1. Use manual payload
+        company_payload = manual_data["company"]
         initial_state = {
-            "company_data": manual_data["company"],
+            "company_data": company_payload,
             "historical_data": manual_data["historical_data"],
             "metrics": None,
             "search_query": "",
             "search_results": [],
             "analysis_result": None,
         }
-        ticker = manual_data["company"].get("ticker", "PRIVATE")
-        company_name = manual_data["company"].get("company_name", "Private Company")
+        resolved_ticker = company_payload.get("ticker", requested_ticker or "CUSTOM")
+        company_name = company_payload.get("company_name", "Private Company")
     else:
-        # 2. Fetch seed record for ticker
         from app.sample_data import SEED_DATA
-        record = next((item for item in SEED_DATA if item["ticker"].upper() == ticker.upper()), SEED_DATA[0])
+
+        record = next((item for item in SEED_DATA if item["ticker"].upper() == requested_ticker), SEED_DATA[0])
+        resolved_ticker = record["ticker"]
         company_name = record["company_name"]
-        
         initial_state = {
             "company_data": {
                 "ticker": record["ticker"],
-                "company_name": record["company_name"]
+                "company_name": record["company_name"],
             },
             "historical_data": record["data"]["metrics"]["yearly"],
             "metrics": None,
@@ -111,48 +224,42 @@ async def run_analysis_for_ticker(ticker: str, db: Optional[AsyncSession] = None
             "analysis_result": None,
         }
 
-    # 3. Invoke Graph
     try:
         final_state = await asyncio.to_thread(graph.invoke, initial_state)
-        
-        # 4. Map to UI expectations
-        result = final_state.get("analysis_result", {})
-        analysis = result.get("analysis", {})
-        metrics = final_state.get("metrics", {})
-        
-        # Determine Color Signal
-        z0 = metrics.get("current_z_score", 0)
-        if z0 > 2.99: color_signal = "GREEN"
-        elif z0 > 1.8: color_signal = "YELLOW"
-        else: color_signal = "RED"
-        
-        # 5. Save to History if DB session provided
-        if db:
+        result = final_state.get("analysis_result", {}) or {}
+        analysis = result.get("analysis", {}) or {}
+        metrics = final_state.get("metrics", {}) or {}
+        response_payload = build_response_payload(resolved_ticker, company_name, metrics, analysis)
+
+        if save_history and db:
             try:
                 analysis_history = AnalysisHistory(
-                    ticker=ticker.upper(),
+                    ticker=resolved_ticker.upper(),
                     company_name=company_name,
-                    archetype=analysis.get("analyst_verdict_archetype", "UNKNOWN"),
-                    analysis_data=final_state
+                    archetype=response_payload["analysis"].get("analyst_verdict_archetype", "UNKNOWN"),
+                    analysis_data=final_state,
                 )
                 db.add(analysis_history)
                 await db.commit()
             except Exception as db_err:
                 print(f"Failed to save history: {db_err}")
 
-        return {
-            "metrics": metrics,
-            "analysis": analysis,
-            "color_signal": color_signal
-        }
-    except Exception as e:
-        print(f"Graph invocation failed: {e}")
-        # Fallback for demo if no graph capability
-        if not manual_data:
-            from app.sample_data import SEED_DATA
-            record = next((item for item in SEED_DATA if item["ticker"].upper() == ticker.upper()), SEED_DATA[0])
-            return {**record["data"], "color_signal": "YELLOW"}
-        raise e
+        return response_payload
+    except Exception as graph_error:
+        print(f"Graph invocation failed: {graph_error}")
+        if manual_data:
+            from app.calculator import calculate_metrics
+
+            fallback_metrics = calculate_metrics(manual_data["historical_data"])
+            fallback_analysis = fallback_analysis_from_metrics(fallback_metrics)
+            return build_response_payload(resolved_ticker, company_name, fallback_metrics, fallback_analysis)
+
+        from app.sample_data import SEED_DATA
+
+        record = next((item for item in SEED_DATA if item["ticker"].upper() == requested_ticker), SEED_DATA[0])
+        fallback_metrics = record.get("data", {}).get("metrics", {})
+        fallback_analysis = record.get("data", {}).get("analysis", {})
+        return build_response_payload(record["ticker"], record["company_name"], fallback_metrics, fallback_analysis)
 
 @app.get("/api/analyze/stream")
 async def analyze_stream(ticker: str, db: AsyncSession = Depends(get_db)):
@@ -173,6 +280,20 @@ async def analyze_stream(ticker: str, db: AsyncSession = Depends(get_db)):
         yield "data: [DONE]\n\n"
         
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/compare")
+async def compare_tickers(ticker_a: str, ticker_b: str):
+    """Run two analyses and return a comparison verdict payload."""
+    left, right = await asyncio.gather(
+        run_analysis_for_ticker(ticker_a, db=None, save_history=False),
+        run_analysis_for_ticker(ticker_b, db=None, save_history=False),
+    )
+    return {
+        "left": left,
+        "right": right,
+        "verdict": build_comparison_verdict(left, right),
+    }
 
 # ── API Security ─────────────────────────────────────────────────────────────
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "dev_default_key")
@@ -197,11 +318,20 @@ class HistoricalYear(BaseModel):
     net_income: float
     cash: float
     debt: float
+    total_assets: Optional[float] = None
+    equity: Optional[float] = None
+    working_capital: Optional[float] = None
+    retained_earnings: Optional[float] = None
+    ebit: Optional[float] = None
+    market_value_equity: Optional[float] = None
+    accounts_receivable: Optional[float] = None
+    inventory: Optional[float] = None
+    capex: Optional[float] = None
 
 class CompanyData(BaseModel):
     company_name: str
     sector: Optional[str] = "Unknown"
-    ticker: Optional[str] = "N/A"
+    ticker: Optional[str] = "CUSTOM"
 
 class AnalysisRequest(BaseModel):
     company: CompanyData
@@ -263,46 +393,39 @@ async def export_pdf(ticker: str, db: AsyncSession = Depends(get_db)):
 @app.post("/api/analyze", dependencies=[Depends(get_api_key)])
 async def analyze_company(request: AnalysisRequest, db: AsyncSession = Depends(get_db)):
     """
-    Run an institutional-grade financial trend analysis on the provided company dataset.
-    Requires exactly 5+ years of data.
+    Run an institutional-grade financial trend analysis on a manual payload.
     """
-    # Build LangGraph input state
-    initial_state = {
-        "company_data": request.company.model_dump(),
-        "historical_data": [year.model_dump() for year in request.historical_data],
-        "metrics": None,
-        "search_query": "",
-        "search_results": None,
-        "analysis_result": None,
-    }
-
     try:
-        final_state = graph.invoke(initial_state)
-        result = final_state.get("analysis_result", {})
-        analysis = result.get("analysis", {})
-        
-        # Save to History
-        analysis_history = AnalysisHistory(
-            ticker=request.company.ticker,
-            company_name=request.company.company_name,
-            archetype=analysis.get("analyst_verdict_archetype", "UNKNOWN"),
-            analysis_data=final_state
+        payload_dict: dict[str, Any] = {
+            "company": request.company.model_dump(),
+            "historical_data": [year.model_dump() for year in request.historical_data],
+        }
+        normalized = await run_analysis_for_ticker(
+            ticker=request.company.ticker or "CUSTOM",
+            db=db,
+            manual_data=payload_dict,
+            save_history=True,
         )
-        db.add(analysis_history)
-        await db.commit()
+        analysis = normalized.get("analysis", {})
+        metrics = normalized.get("metrics", {})
 
         return {
             "status": "success",
-            "company_name": result.get("company_name"),
-            "calculated_metrics": final_state.get("metrics"),
+            "ticker": normalized.get("ticker"),
+            "company_name": normalized.get("company_name"),
+            "metrics": metrics,
+            "analysis": analysis,
+            "color_signal": normalized.get("color_signal"),
+            # Backward-compatible keys for older callers.
+            "calculated_metrics": metrics,
             "flags": analysis.get("flags", []),
             "pattern_diagnosis": analysis.get("pattern_diagnosis"),
+            "retail_verdict": analysis.get("retail_verdict"),
             "analyst_verdict": {
                 "archetype": analysis.get("analyst_verdict_archetype"),
-                "summary": analysis.get("analyst_verdict_summary")
-            }
+                "summary": analysis.get("analyst_verdict_summary"),
+            },
         }
-        
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as err:

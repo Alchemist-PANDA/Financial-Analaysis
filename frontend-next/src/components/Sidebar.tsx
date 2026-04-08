@@ -1,54 +1,115 @@
 'use client';
-import React, { useState, useEffect } from 'react';
 
-const Sidebar = ({ onSelectTicker, refreshTrigger, currentView, onViewChange }: { 
-    onSelectTicker: (ticker: string) => void, 
-    refreshTrigger?: number, 
-    currentView: string,
-    onViewChange: (view: string) => void
-}) => {
-    const [history, setHistory] = useState<any[]>([]);
+import React, { useEffect, useState } from 'react';
+
+type HistoryItem = {
+    ticker: string;
+    name: string;
+    archetype: string;
+    date?: string;
+};
+
+type SidebarProps = {
+    onSelectTicker: (ticker: string) => void;
+    refreshTrigger?: number;
+    currentView: 'live' | 'compare';
+    onViewChange: (view: 'live' | 'compare') => void;
+};
+
+const Sidebar = ({ onSelectTicker, refreshTrigger, currentView, onViewChange }: SidebarProps) => {
+    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
     const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
     useEffect(() => {
-        // ... fetchHistory remains same ...
-    }, [refreshTrigger]);
+        let isActive = true;
+        const fetchHistory = async () => {
+            setIsLoading(true);
+            setHistoryError(null);
+            try {
+                const response = await fetch(`${BASE_URL}/api/history`, {
+                    headers: {
+                        'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'dev_default_key',
+                    },
+                });
+                const body = await response.json();
+                if (!response.ok) {
+                    throw new Error(body?.detail || 'Unable to load history.');
+                }
+                if (isActive) {
+                    setHistory(Array.isArray(body) ? body : []);
+                }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to load history.';
+                if (isActive) {
+                    setHistoryError(message);
+                    setHistory([]);
+                }
+            } finally {
+                if (isActive) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        void fetchHistory();
+        return () => {
+            isActive = false;
+        };
+    }, [BASE_URL, refreshTrigger]);
 
     return (
         <aside className="terminal-sidebar">
             <div style={{ padding: '24px 16px', borderBottom: '1px solid var(--border)' }}>
                 <h3 className="grid-label" style={{ marginBottom: '12px' }}>Workspace</h3>
                 <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <button 
+                    <button
                         className={`sidebar-btn ${currentView === 'live' ? 'sidebar-btn-active' : ''}`}
                         onClick={() => onViewChange('live')}
                     >
                         Live Analysis
                     </button>
-                    <button 
+                    <button
                         className={`sidebar-btn ${currentView === 'compare' ? 'sidebar-btn-active' : ''}`}
                         onClick={() => onViewChange('compare')}
                     >
-                        ⚔️ vs COMPARE
+                        VS Compare
                     </button>
-                    <button className="sidebar-btn font-muted" disabled>History</button>
                 </nav>
             </div>
-            
+
             <div style={{ flex: 1, padding: '24px 16px', overflowY: 'auto' }}>
                 <h3 className="grid-label" style={{ marginBottom: '12px' }}>Analysis History</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {history.length === 0 && (
+                    {isLoading && (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                            Loading history...
+                        </div>
+                    )}
+                    {!isLoading && historyError && (
+                        <div style={{ color: '#ef4444', fontSize: '11px' }}>
+                            {historyError}
+                        </div>
+                    )}
+                    {!isLoading && !historyError && history.length === 0 && (
                         <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>No previous analyses.</div>
                     )}
-                    {history.map((item, i) => (
-                        <div key={i} className="history-item" onClick={() => onSelectTicker(item.ticker)}>
+                    {history.map((item, index) => (
+                        <button
+                            key={`${item.ticker}-${index}`}
+                            className="history-item"
+                            onClick={() => {
+                                onViewChange('live');
+                                onSelectTicker(item.ticker);
+                            }}
+                        >
                             <div className="history-ticker">{item.ticker}</div>
                             <div className="history-name">{item.name}</div>
-                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.2)', marginTop: '4px' }}>
+                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', marginTop: '4px' }}>
                                 {item.archetype}
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
             </div>
@@ -66,34 +127,42 @@ const Sidebar = ({ onSelectTicker, refreshTrigger, currentView, onViewChange }: 
                     border-radius: 4px;
                     transition: all 0.2s;
                 }
+
                 .sidebar-btn:hover {
                     background: rgba(255, 255, 255, 0.05);
                     color: var(--foreground);
                 }
+
                 .sidebar-btn-active {
                     background: rgba(14, 165, 233, 0.1);
                     color: var(--primary);
                 }
+
                 .history-item {
                     padding: 12px;
                     background: rgba(255, 255, 255, 0.02);
                     border: 1px solid var(--border);
                     cursor: pointer;
                     transition: all 0.2s;
+                    text-align: left;
                 }
+
                 .history-item:hover {
                     background: rgba(255, 255, 255, 0.05);
                     border-color: var(--secondary);
                 }
+
                 .history-ticker {
                     font-family: var(--font-mono);
                     font-weight: 700;
                     font-size: 13px;
                     color: var(--primary);
                 }
+
                 .history-name {
                     font-size: 11px;
                     color: var(--text-muted);
+                    margin-top: 2px;
                 }
             `}</style>
         </aside>

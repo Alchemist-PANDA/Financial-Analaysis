@@ -141,13 +141,13 @@ class FinancialReportBuilder:
         rows = [header]
         
         # Revenue
-        rows.append(["Revenue ($M)"] + [f"{y['revenue']:,.0f}" for y in metrics["yearly"]])
-        rows.append(["EBITDA ($M)"] + [f"{y['ebitda']:,.0f}" for y in metrics["yearly"]])
-        rows.append(["Net Income ($M)"] + [f"{y['net_income']:,.0f}" for y in metrics["yearly"]])
-        rows.append(["EBITDA Margin %"] + [f"{y['ebitda_margin']}%" for y in metrics["yearly"]])
-        rows.append(["Net Debt / EBITDA"] + [f"{y['leverage']}x" for y in metrics["yearly"]])
-        rows.append(["Altman Z-Score"] + [f"{y['z_score']:.2f}" for y in metrics["yearly"]])
-        rows.append(["ROE %"] + [f"{y['roe']}%" for y in metrics["yearly"]])
+        rows.append(["Revenue ($M)"] + [f"{y.get('revenue', 0):,.0f}" for y in metrics["yearly"]])
+        rows.append(["EBITDA ($M)"] + [f"{y.get('ebitda', 0):,.0f}" for y in metrics["yearly"]])
+        rows.append(["Net Income ($M)"] + [f"{y.get('net_income', 0):,.0f}" for y in metrics["yearly"]])
+        rows.append(["EBITDA Margin %"] + [f"{y.get('ebitda_margin', 0)}%" for y in metrics["yearly"]])
+        rows.append(["Net Debt / EBITDA"] + [f"{y.get('leverage', 0)}x" for y in metrics["yearly"]])
+        rows.append(["Altman Z-Score"] + [f"{y.get('z_score', 0):.2f}" for y in metrics["yearly"]])
+        rows.append(["ROE %"] + [f"{y.get('roe', 0)}%" for y in metrics["yearly"]])
         
         return rows
 
