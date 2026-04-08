@@ -93,7 +93,7 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete }: { forceTicker: string
         <main className="terminal-content">
             {/* TERMINAL TOP INFO BAR */}
             <div className="terminal-header">
-                <div className="terminal-title">Apex Terminal Core</div>
+                <div className="terminal-title">Sentinel Forensic</div>
                 <div style={{ flex: 1, display: 'flex', gap: '32px' }}>
                     <div className="info-stat">
                         <span className="grid-label">Status</span>
