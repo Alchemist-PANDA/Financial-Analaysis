@@ -1,0 +1,22 @@
+[profiles.conservative]
+approval_policy = "untrusted"
+sandbox_mode = "workspace-write"
+
+[profiles.trusted]
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[agents.orchestrator]
+description = "Reads AGENTS.md, maps all files across app/ and frontend-next/, blocks cascade risk, coordinates all subagents in sequence"
+
+[agents.audit-agent]
+description = "Runs before any code is written. Scans app/ and frontend-next/. Maps all existing files. Identifies cascade risks between Python backend and Next.js frontend."
+
+[agents.metrics-agent]
+description = "Builds 50-metric dashboard panels in isolation inside frontend-next/src/components/MetricsPanel/ as TypeScript .tsx files"
+
+[agents.comparison-agent]
+description = "Builds comparison board in isolation inside frontend-next/src/components/ComparisonBoard/ as TypeScript .tsx files"
+
+[agents.qa-agent]
+description = "Runs after every phase. Tests all existing features in both backend and frontend. Blocks progress if anything fails."
