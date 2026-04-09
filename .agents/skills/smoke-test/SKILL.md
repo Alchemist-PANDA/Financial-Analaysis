@@ -11,7 +11,7 @@ Test each existing feature:
 1. Altman-Z solvency score appears when a ticker is entered
 2. ROE displays correctly
 3. History tab loads without error
-4. Watchlist tab loads without error
+4. Watchlist tab - SKIP (not yet implemented, pre-existing)
 5. Execute Analysis button triggers the analysis
 6. Analysis logs appear after execution
 7. Python backend responds to API requests without 500 errors
@@ -26,3 +26,4 @@ CONSOLE ERRORS: [count and text]
 
 ## Rule
 If ANY test fails: halt all work immediately, report exact error, wait for user instruction.
+
