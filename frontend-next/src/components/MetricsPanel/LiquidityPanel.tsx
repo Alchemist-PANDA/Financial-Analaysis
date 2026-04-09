@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import type { FinancialData } from './index';
@@ -7,11 +7,18 @@ type LiquidityPanelProps = {
     financialData: FinancialData;
 };
 
+const formatMetric = (value: number | undefined, suffix = '', precision = 1) => {
+    if (value === undefined || value === null || Number.isNaN(value)) {
+        return '--';
+    }
+    return `${value.toFixed(precision)}${suffix}`;
+};
+
 const LiquidityPanel = ({ financialData }: LiquidityPanelProps) => {
     const rows = [
-        { label: 'Quick Ratio', value: '--' },
-        { label: 'Cash Ratio', value: '--' },
-        { label: 'Operating Cash Flow', value: '--' },
+        { label: 'Quick Ratio', value: formatMetric(financialData.current_quick_ratio, '', 2) },
+        { label: 'Cash Ratio', value: formatMetric(financialData.current_cash_ratio, '', 2) },
+        { label: 'Operating Cash Flow', value: formatMetric(financialData.yearly[financialData.yearly.length - 1]?.ebitda, '', 0) },
     ];
 
     return (

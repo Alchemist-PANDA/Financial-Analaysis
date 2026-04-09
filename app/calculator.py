@@ -46,14 +46,33 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
         equity_multiplier = round(assets / equity, 2) if equity else 0
         roe = round(net_margin * asset_turnover * equity_multiplier, 1)
 
-        # Efficiency Metrics
-        ar = numeric_value(data, "accounts_receivable")
-        inv = numeric_value(data, "inventory")
+        # Efficiency & Profitability Metrics
+        ar    = numeric_value(data, "accounts_receivable")
+        inv   = numeric_value(data, "inventory")
         capex = numeric_value(data, "capex")
+        cogs  = numeric_value(data, "cogs")
         
         dso = round((ar / rev) * 365, 0) if rev > 0 else 0
         inv_turnover = round(rev / inv, 1) if inv > 0 else 0
         fcf_conv = round(((ebitda - capex) / ebitda) * 100, 1) if ebitda > 0 else 0
+        roa = round((ni / assets) * 100, 1) if assets > 0 else 0
+        gross_margin = round(((rev - cogs) / rev) * 100, 1) if rev > 0 else 0
+
+        # Capital Structure & Solvency
+        int_exp = numeric_value(data, "interest_expense")
+        curr_assets = numeric_value(data, "current_assets")
+        curr_liab = numeric_value(data, "current_liabilities")
+        
+        debt_equity = round(debt / equity, 2) if equity > 0 else 0
+        curr_ratio = round(curr_assets / curr_liab, 2) if curr_liab > 0 else 0
+        quick_ratio = round((curr_assets - inv) / curr_liab, 2) if curr_liab > 0 else 0
+        cash_ratio = round(cash / curr_liab, 2) if curr_liab > 0 else 0
+        int_coverage = round(ebit / int_exp, 2) if int_exp > 0 else 10.0
+
+        # Valuation
+        pe_ratio = round(mve / ni, 1) if ni > 0 else 0
+        pb_ratio = round(mve / equity, 1) if equity > 0 else 0
+        ev_ebitda = round((mve + debt - cash) / ebitda, 1) if ebitda > 0 else 0
 
         # Altman Z-Score Calculation
         A = wc / assets
@@ -78,7 +97,17 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
             "dso": dso,
             "inventory_turnover": inv_turnover,
             "fcf_conversion_pct": fcf_conv,
-            "z_score": z_score
+            "z_score": z_score,
+            "roa": roa,
+            "gross_margin": gross_margin,
+            "debt_equity": debt_equity,
+            "current_ratio": curr_ratio,
+            "quick_ratio": quick_ratio,
+            "cash_ratio": cash_ratio,
+            "interest_coverage": int_coverage,
+            "pe_ratio": pe_ratio,
+            "pb_ratio": pb_ratio,
+            "ev_ebitda": ev_ebitda
         })
 
     # 1. Revenue CAGR Calculation
@@ -134,6 +163,13 @@ def calculate_metrics(historical_data: list[dict]) -> dict:
         "solvency_signal": solvency_signal,
         "current_z_score": z0,
         "current_roe": years_metrics[-1]["roe"],
+        "current_roa": years_metrics[-1]["roa"],
+        "current_gross_margin": years_metrics[-1]["gross_margin"],
+        "current_debt_equity": years_metrics[-1]["debt_equity"],
+        "current_ratio": years_metrics[-1]["current_ratio"],
+        "current_quick_ratio": years_metrics[-1]["quick_ratio"],
+        "current_cash_ratio": years_metrics[-1]["cash_ratio"],
+        "current_interest_coverage": years_metrics[-1]["interest_coverage"],
         "current_dso": years_metrics[-1]["dso"],
         "current_inventory_turnover": years_metrics[-1]["inventory_turnover"],
         "current_fcf_conversion_pct": years_metrics[-1]["fcf_conversion_pct"]

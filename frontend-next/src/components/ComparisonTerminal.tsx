@@ -243,11 +243,13 @@ const ComparisonTerminal = () => {
 
                 .comparison-header {
                     display: flex;
-                    align-items: end;
+                    align-items: flex-end;
                     gap: 12px;
-                    padding: 16px;
+                    padding: 20px 16px;
                     border-bottom: 1px solid var(--border);
                     background: #050505;
+                    min-height: 80px;
+                    flex-shrink: 0;
                 }
 
                 .input-group {

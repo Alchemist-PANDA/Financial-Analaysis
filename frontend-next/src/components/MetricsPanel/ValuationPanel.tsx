@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import type { FinancialData } from './index';
@@ -7,13 +7,20 @@ type ValuationPanelProps = {
     financialData: FinancialData;
 };
 
+const formatMetric = (value: number | undefined, suffix = '', precision = 1) => {
+    if (value === undefined || value === null || Number.isNaN(value)) {
+        return '--';
+    }
+    return `${value.toFixed(precision)}${suffix}`;
+};
+
 const ValuationPanel = ({ financialData }: ValuationPanelProps) => {
     void financialData;
 
     const rows = [
-        { label: 'P/E', value: '--' },
-        { label: 'P/B', value: '--' },
-        { label: 'EV/EBITDA', value: '--' },
+        { label: 'P/E', value: formatMetric(financialData.current_pe_ratio, '', 1) },
+        { label: 'P/B', value: formatMetric(financialData.current_pb_ratio, '', 1) },
+        { label: 'EV/EBITDA', value: formatMetric(financialData.current_ev_ebitda, '', 1) },
         { label: 'PEG Ratio', value: '--' },
         { label: 'DCF Intrinsic Value', value: '--' },
     ];

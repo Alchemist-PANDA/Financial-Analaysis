@@ -18,6 +18,10 @@ type YearRow = {
     accounts_receivable: number;
     inventory: number;
     capex: number;
+    cogs: number;
+    interest_expense: number;
+    current_assets: number;
+    current_liabilities: number;
 };
 
 type ManualPayload = {
@@ -52,6 +56,10 @@ const DEFAULT_ROWS: YearRow[] = [
         accounts_receivable: 10,
         inventory: 5,
         capex: 5,
+        cogs: 60,
+        interest_expense: 2,
+        current_assets: 40,
+        current_liabilities: 20,
     },
     {
         year: '2021',
@@ -69,6 +77,10 @@ const DEFAULT_ROWS: YearRow[] = [
         accounts_receivable: 12,
         inventory: 6,
         capex: 6,
+        cogs: 70,
+        interest_expense: 2,
+        current_assets: 45,
+        current_liabilities: 22,
     },
     {
         year: '2022',
@@ -86,6 +98,10 @@ const DEFAULT_ROWS: YearRow[] = [
         accounts_receivable: 15,
         inventory: 8,
         capex: 8,
+        cogs: 80,
+        interest_expense: 1,
+        current_assets: 60,
+        current_liabilities: 25,
     },
     {
         year: '2023',
@@ -103,6 +119,10 @@ const DEFAULT_ROWS: YearRow[] = [
         accounts_receivable: 20,
         inventory: 10,
         capex: 10,
+        cogs: 90,
+        interest_expense: 1,
+        current_assets: 80,
+        current_liabilities: 30,
     },
     {
         year: '2024',
@@ -120,6 +140,10 @@ const DEFAULT_ROWS: YearRow[] = [
         accounts_receivable: 30,
         inventory: 15,
         capex: 12,
+        cogs: 100,
+        interest_expense: 0,
+        current_assets: 120,
+        current_liabilities: 35,
     },
 ];
 
@@ -138,6 +162,10 @@ const EDITABLE_FIELDS: Array<keyof Omit<YearRow, 'year'>> = [
     'accounts_receivable',
     'inventory',
     'capex',
+    'cogs',
+    'interest_expense',
+    'current_assets',
+    'current_liabilities',
 ];
 
 const ManualEntryModal = ({ isOpen, onClose, onSubmit }: ManualEntryModalProps) => {

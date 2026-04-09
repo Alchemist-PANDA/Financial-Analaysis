@@ -16,6 +16,11 @@ def run_snapshot_agent(company_data: dict, metrics: dict, search_results: list =
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not set.")
 
+    # [ENHANCED SCRAPER] Add extended metrics if ticker is available
+    ticker = company_data.get("ticker")
+    if ticker:
+        company_data.update(scrape_extended_financials(ticker))
+
     # Prepare data for prompt
     data_summary = json.dumps({
         "company": company_data,
@@ -98,3 +103,54 @@ Return ONLY the JSON object."""
         "search_results":     search_results,
         "analysis":           analysis,
     }
+
+
+def scrape_extended_financials(ticker: str) -> dict:
+    """
+    Scrapes COGS, Interest Expense, Current Assets, Current Liabilities
+    from Yahoo Finance using yfinance.
+    Returns a dict with only these 4 fields.
+    Falls back to 0 for any field it cannot find so existing metrics are never disrupted.
+    """
+    extended = {
+        "cogs": 0,
+        "interest_expense": 0,
+        "current_assets": 0,
+        "current_liabilities": 0,
+    }
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+
+        # Income Statement — COGS and Interest Expense
+        income_stmt = stock.financials
+        if income_stmt is not None and not income_stmt.empty:
+            if "Cost Of Revenue" in income_stmt.index:
+                extended["cogs"] = float(
+                    income_stmt.loc["Cost Of Revenue"].iloc[0]
+                ) / 1_000_000
+            if "Interest Expense" in income_stmt.index:
+                extended["interest_expense"] = abs(float(
+                    income_stmt.loc["Interest Expense"].iloc[0]
+                )) / 1_000_000
+
+        # Balance Sheet — Current Assets, Current Liabilities, Total Assets
+        balance_sheet = stock.balance_sheet
+        if balance_sheet is not None and not balance_sheet.empty:
+            if "Current Assets" in balance_sheet.index:
+                extended["current_assets"] = float(
+                    balance_sheet.loc["Current Assets"].iloc[0]
+                ) / 1_000_000
+            if "Current Liabilities" in balance_sheet.index:
+                extended["current_liabilities"] = float(
+                    balance_sheet.loc["Current Liabilities"].iloc[0]
+                ) / 1_000_000
+            if "Total Assets" in balance_sheet.index:
+                extended["total_assets"] = float(
+                    balance_sheet.loc["Total Assets"].iloc[0]
+                ) / 1_000_000
+
+    except Exception:
+        pass  # On any failure, all fields stay 0 — existing pipeline is unaffected
+
+    return extended

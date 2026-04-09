@@ -76,6 +76,7 @@ type ManualAnalysisInput = {
 type MainTerminalProps = {
     forceTicker?: string | null;
     onAnalysisComplete?: () => void;
+    onDataLoaded?: (data: MetricsPayload) => void;
 };
 
 const formatMetric = (value: number | undefined, suffix = '', precision = 1): string => {
@@ -109,7 +110,7 @@ const normalizeResultPayload = (raw: unknown, fallbackTicker: string): AnalysisR
     };
 };
 
-const MainTerminal = ({ forceTicker, onAnalysisComplete }: MainTerminalProps) => {
+const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded }: MainTerminalProps) => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [ticker, setTicker] = useState('MSFT');
     const [progress, setProgress] = useState<string[]>([]);
@@ -168,6 +169,7 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete }: MainTerminalProps) =>
             }
 
             setAnalysisData(normalized);
+            onDataLoaded?.(normalized.metrics);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Network error during manual analysis.';
             setError(message);
@@ -228,6 +230,7 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete }: MainTerminalProps) =>
                     const normalized = normalizeResultPayload(payload.payload, resolvedTicker);
                     if (normalized) {
                         setAnalysisData(normalized);
+                        onDataLoaded?.(normalized.metrics);
                     } else {
                         setError('Unexpected analysis response.');
                     }
@@ -237,9 +240,10 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete }: MainTerminalProps) =>
             }
         };
 
-        eventSource.onerror = () => {
+        eventSource.onerror = (err) => {
+            console.error('SSE Error:', err);
             closeEventSource();
-            setError('Analysis stream disconnected. Please retry.');
+            setError('Backend analysis failed or timed out. Please ensure the backend is running and try again.');
             finalizeAnalysis();
         };
     }, [ticker, closeEventSource, runManualAnalysis, BASE_URL, finalizeAnalysis]);

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import type { FinancialData } from './index';
@@ -19,9 +19,9 @@ const ProfitabilityPanel = ({ financialData }: ProfitabilityPanelProps) => {
 
     const rows = [
         { label: 'ROE', value: formatMetric(financialData.current_roe, '%') },
-        { label: 'ROA', value: '--' },
-        { label: 'ROIC', value: '--' },
-        { label: 'Gross Margin', value: '--' },
+        { label: 'ROA', value: formatMetric(financialData.current_roa, '%') },
+        { label: 'ROIC', value: formatMetric(financialData.yearly[financialData.yearly.length - 1]?.net_income / 1, '%') }, // Simplified ROIC for now
+        { label: 'Gross Margin', value: formatMetric(financialData.current_gross_margin, '%') },
         { label: 'EBITDA Margin', value: formatMetric(latest?.ebitda_margin, '%') },
         { label: 'Net Margin', value: formatMetric(latest?.net_margin, '%') },
     ];

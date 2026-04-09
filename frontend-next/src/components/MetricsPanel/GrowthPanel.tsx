@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import type { FinancialData } from './index';
@@ -17,8 +17,8 @@ const formatMetric = (value: number | undefined, suffix = '', precision = 1) => 
 const GrowthPanel = ({ financialData }: GrowthPanelProps) => {
     const rows = [
         { label: 'Revenue CAGR', value: formatMetric(financialData.revenue_cagr_pct, '%') },
-        { label: 'EPS Growth', value: '--' },
-        { label: 'FCF Growth', value: '--' },
+        { label: 'Net Income Growth', value: formatMetric(financialData.yearly[financialData.yearly.length - 1]?.net_income / financialData.yearly[financialData.yearly.length - 2]?.net_income * 100 - 100, '%') },
+        { label: 'FCF Conversion', value: formatMetric(financialData.current_fcf_conversion_pct, '%') },
     ];
 
     return (

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import ProfitabilityPanel from './ProfitabilityPanel';
@@ -23,6 +23,16 @@ export type CalculatorYearMetric = {
     inventory_turnover: number;
     fcf_conversion_pct: number;
     z_score: number;
+    roa: number;
+    gross_margin: number;
+    debt_equity: number;
+    current_ratio: number;
+    quick_ratio: number;
+    cash_ratio: number;
+    interest_coverage: number;
+    pe_ratio: number;
+    pb_ratio: number;
+    ev_ebitda: number;
 };
 
 export type FinancialData = {
@@ -34,6 +44,16 @@ export type FinancialData = {
     solvency_signal: string;
     current_z_score: number;
     current_roe: number;
+    current_roa: number;
+    current_gross_margin: number;
+    current_debt_equity: number;
+    current_ratio: number;
+    current_quick_ratio: number;
+    current_cash_ratio: number;
+    current_interest_coverage: number;
+    current_pe_ratio: number;
+    current_pb_ratio: number;
+    current_ev_ebitda: number;
     current_dso: number;
     current_inventory_turnover: number;
     current_fcf_conversion_pct: number;

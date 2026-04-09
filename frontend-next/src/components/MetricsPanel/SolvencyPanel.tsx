@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import type { FinancialData } from './index';
@@ -17,9 +17,9 @@ const formatMetric = (value: number | undefined, suffix = '', precision = 2) => 
 const SolvencyPanel = ({ financialData }: SolvencyPanelProps) => {
     const rows = [
         { label: 'Altman-Z', value: formatMetric(financialData.current_z_score, '', 2) },
-        { label: 'Debt/Equity', value: '--' },
-        { label: 'Interest Coverage', value: '--' },
-        { label: 'Current Ratio', value: '--' },
+        { label: 'Debt/Equity', value: formatMetric(financialData.current_debt_equity, '', 2) },
+        { label: 'Interest Coverage', value: formatMetric(financialData.current_interest_coverage, '', 2) },
+        { label: 'Current Ratio', value: formatMetric(financialData.current_ratio, '', 2) },
     ];
 
     return (
