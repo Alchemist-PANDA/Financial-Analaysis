@@ -59,5 +59,35 @@ SEED_DATA = [
                 "analyst_verdict_summary": "High risk of dividend cut. Foundry bet is capital intensive and years from payoff. Neutral to Sell."
             }
         }
+    },
+    {
+        "ticker": "TSLA",
+        "company_name": "Tesla Inc.",
+        "archetype": "TRANSITION",
+        "data": {
+            "metrics": {
+                "yearly": [
+                    {"year": "2020", "revenue": 31536.0, "ebitda": 5817.0, "net_income": 721.0, "cash": 19384.0, "debt": 11680.0, "total_assets": 52148.0, "equity": 22225.0, "working_capital": 3444.0, "retained_earnings": -5399.0, "ebit": 1951.0, "market_value_equity": 600000.0, "accounts_receivable": 1886.0, "inventory": 4101.0, "capex": 3157.0, "cogs": 24906.0, "interest_expense": 485.0, "current_assets": 26717.0, "current_liabilities": 14531.0},
+                    {"year": "2021", "revenue": 53823.0, "ebitda": 11621.0, "net_income": 5519.0, "cash": 17576.0, "debt": 6886.0, "total_assets": 62131.0, "equity": 30189.0, "working_capital": 4200.0, "retained_earnings": 331.0, "ebit": 6523.0, "market_value_equity": 1000000.0, "accounts_receivable": 1913.0, "inventory": 5757.0, "capex": 6482.0, "cogs": 40217.0, "interest_expense": 371.0, "current_assets": 27100.0, "current_liabilities": 19705.0},
+                    {"year": "2022", "revenue": 81462.0, "ebitda": 17833.0, "net_income": 12556.0, "cash": 22185.0, "debt": 3099.0, "total_assets": 82338.0, "equity": 44704.0, "working_capital": 8100.0, "retained_earnings": 12885.0, "ebit": 13656.0, "market_value_equity": 400000.0, "accounts_receivable": 2952.0, "inventory": 12839.0, "capex": 7158.0, "cogs": 60609.0, "interest_expense": 191.0, "current_assets": 40917.0, "current_liabilities": 26709.0},
+                    {"year": "2023", "revenue": 96773.0, "ebitda": 14796.0, "net_income": 14997.0, "cash": 29094.0, "debt": 4642.0, "total_assets": 106618.0, "equity": 62634.0, "working_capital": 10200.0, "retained_earnings": 27882.0, "ebit": 8891.0, "market_value_equity": 750000.0, "accounts_receivable": 3508.0, "inventory": 13626.0, "capex": 8899.0, "cogs": 79113.0, "interest_expense": 156.0, "current_assets": 49616.0, "current_liabilities": 28748.0},
+                    {"year": "2024", "revenue": 96773.0, "ebitda": 13000.0, "net_income": 10000.0, "cash": 30000.0, "debt": 4000.0, "total_assets": 115000.0, "equity": 70000.0, "working_capital": 12000.0, "retained_earnings": 35000.0, "ebit": 8000.0, "market_value_equity": 800000.0, "accounts_receivable": 4000.0, "inventory": 14000.0, "capex": 9000.0, "cogs": 80000.0, "interest_expense": 150.0, "current_assets": 52000.0, "current_liabilities": 30000.0}
+                ],
+                "revenue_cagr_pct": 32.4,
+                "revenue_trajectory": "FLAT",
+                "margin_signal": "COMPRESSING",
+                "debt_signal": "DELEVERAGED",
+                "solvency_signal": "SAFE"
+            },
+            "analysis": {
+                "pattern_diagnosis": "DIAGNOSIS: THE CANNIBAL. Hypergrowth era has flatlined in 2024. Automotive price parity strategies have crushed gross margins, though the pristine balance sheet provides downside protection during the robotics transition.",
+                "flags": [
+                    {"emoji": "⚠️", "name": "Margin Scissor", "explanation": "Gross margins have compressed heavily over the last 6 quarters."},
+                    {"emoji": "✅", "name": "Fortress Balance Sheet", "explanation": "Over $30B in cash with essentially zero net debt provides extreme solvency comfort."}
+                ],
+                "analyst_verdict_archetype": "TRANSITION",
+                "analyst_verdict_summary": "Priced as a software company but printing margins like a legacy automaker. Solvency is perfect, but return on capital is degrading heavily. Hold."
+            }
+        }
     }
 ]
