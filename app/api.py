@@ -351,22 +351,28 @@ async def run_analysis_for_ticker(
         company_name = company_payload.get("company_name", "Private Company")
     else:
         record = get_seed_record(requested_ticker)
-        if not record:
-            allowed = ", ".join(supported_tickers())
-            raise ValueError(
-                f"Ticker '{requested_ticker}' is not available in this environment. Supported tickers: {allowed}."
-            )
-        historical_data = record["data"]["metrics"]["yearly"]
-        resolved_ticker = record["ticker"]
-        company_name = record["company_name"]
+        if record:
+            historical_data = record["data"]["metrics"]["yearly"]
+            resolved_ticker = record["ticker"]
+            company_name = record["company_name"]
+        else:
+            from app.dynamic_fetcher import fetch_historical_data
+            fetch_result = await fetch_historical_data(requested_ticker)
+            if not fetch_result:
+                raise ValueError(
+                    f"Ticker '{requested_ticker}' could not be fetched dynamically or does not exist."
+                )
+            company_name, historical_data = fetch_result
+            resolved_ticker = requested_ticker
+
         initial_state = {
             "company_data": {
-                "ticker": record["ticker"],
-                "company_name": record["company_name"],
+                "ticker": resolved_ticker,
+                "company_name": company_name,
             },
             "historical_data": historical_data,
             "metrics": None,
-            "search_query": f"{record['ticker']} news",
+            "search_query": f"{resolved_ticker} news",
             "search_results": [],
             "analysis_result": None,
         }
@@ -379,13 +385,13 @@ async def run_analysis_for_ticker(
         except Exception:
             if manual_data:
                 raise
-            metrics = record.get("data", {}).get("metrics", {}) if not manual_data else {}
+            metrics = record.get("data", {}).get("metrics", {}) if record else {}
 
         if manual_data:
             analysis = fallback_analysis_from_metrics(metrics)
         else:
             analysis = (
-                record.get("data", {}).get("analysis", {})
+                (record.get("data", {}).get("analysis", {}) if record else {})
                 or fallback_analysis_from_metrics(metrics)
             )
 
