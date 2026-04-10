@@ -518,17 +518,15 @@ async def analyze_stream(ticker: str, db: AsyncSession = Depends(get_db)):
             from app.calculator import calculate_metrics
             
             record = get_seed_record(ticker)
-            if not record:
-                allowed = ", ".join(supported_tickers())
-                raise ValueError(
-                    f"Ticker '{(ticker or '').upper()}' is not available in this environment. Supported tickers: {allowed}."
-                )
-            company_name = record["company_name"]
-            metrics = calculate_metrics(record["data"]["metrics"]["yearly"])
-            
-            # Send early metrics result so dashboard fields populate instantly
-            early_payload = build_response_payload(record["ticker"], company_name, metrics, {})
-            yield f"data: {json.dumps({'type':'result','payload': early_payload})}\n\n"
+            if record:
+                company_name = record["company_name"]
+                metrics = calculate_metrics(record["data"]["metrics"]["yearly"])
+                
+                # Send early metrics result so dashboard fields populate instantly
+                early_payload = build_response_payload(record["ticker"], company_name, metrics, {})
+                yield f"data: {json.dumps({'type':'result','payload': early_payload})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type':'progress','step':'fetching','label':f'Fetching 5-year dynamic data for {ticker.upper()}'})}\n\n"
             
             # Stage 2: Full analysis (AI synthesis + Search + Scraper)
             result = await run_analysis_for_ticker(ticker, db)
