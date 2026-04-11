@@ -140,6 +140,8 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded }: MainTer
 
     const closeEventSource = useCallback(() => {
         if (eventSourceRef.current) {
+            eventSourceRef.current.onmessage = null;
+            eventSourceRef.current.onerror = null;
             eventSourceRef.current.close();
             eventSourceRef.current = null;
         }

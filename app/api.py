@@ -111,9 +111,10 @@ def default_retail_verdict(analysis: dict, color_signal: str) -> str:
 
 
 def build_response_payload(ticker: str, company_name: str, metrics: dict, analysis: dict) -> dict:
-    z_score_raw = metrics.get("current_z_score")
+    safe_metrics = dict(metrics or {})
+    z_score_raw = safe_metrics.get("current_z_score")
     if z_score_raw is None:
-        solvency = str(metrics.get("solvency_signal", "")).upper()
+        solvency = str(safe_metrics.get("solvency_signal", "")).upper()
         if solvency == "SAFE":
             z_score_raw = 3.1
         elif solvency in {"GREY_ZONE", "YELLOW"}:
@@ -131,14 +132,14 @@ def build_response_payload(ticker: str, company_name: str, metrics: dict, analys
     return {
         "ticker": ticker.upper(),
         "company_name": company_name,
-        "metrics": metrics,
+        "metrics": safe_metrics,
         "analysis": normalized_analysis,
         "color_signal": color_signal,
     }
 
 
 def score_for_comparison(payload: dict) -> float:
-    metrics = payload.get("metrics", {})
+    metrics = dict(payload.get("metrics", {}) or {})
     z_score = float(metrics.get("current_z_score", 0.0) or 0.0)
     cagr = float(metrics.get("revenue_cagr_pct", 0.0) or 0.0)
     fcf = float(metrics.get("current_fcf_conversion_pct", 0.0) or 0.0)
