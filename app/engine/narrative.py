@@ -48,7 +48,7 @@ KEY METRICS:
   Net Debt/EBITDA:     {m.get("net_debt_to_ebitda", 0):.2f}x
   Interest Coverage:   {m.get("interest_coverage", 0):.2f}x
   Current Ratio:       {m.get("current_ratio", 0):.2f}x
-  Altman Z-Score:      {m.get("altman_z", 0):.2f} ({m.get("altman_z_full", {}).get("zone", "")})
+  Altman Z-Score:      {m.get("altman_z", 0):.2f} ({(m.get("altman_z_full") or {}).get("zone", "")})
   CFO/EBITDA:          {m.get("cfo_to_ebitda", 0):.2f}x
   FCF/Net Income:      {m.get("fcf_to_net_income", 0):.2f}x
   Revenue CAGR:        {m.get("revenue_cagr", 0)*100:.1f}%

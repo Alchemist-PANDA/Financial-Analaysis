@@ -11,32 +11,36 @@ from config import GROQ_API_KEY, MODEL_NAME, MAX_TOKENS
 from app.engine.narrative import build_narrative_prompt, validate_narrative
 
 
-def run_snapshot_agent(company_data: dict, metrics: dict, search_results: list = None) -> dict:
+def run_snapshot_agent(company_data: dict | None, metrics: dict | None, search_results: list = None) -> dict:
     """Call Groq and return a structured institutional-grade financial trend analysis."""
 
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not set.")
 
+    # Guard against None inputs from the graph
+    safe_company = dict(company_data or {})
+    safe_metrics = dict(metrics or {})
+
     # [ENHANCED SCRAPER] Add extended metrics if ticker is available
-    ticker = company_data.get("ticker")
+    ticker = safe_company.get("ticker")
     if ticker:
-        company_data.update(scrape_extended_financials(ticker))
+        safe_company.update(scrape_extended_financials(ticker))
 
     # Prepare data for prompt
     data_summary = json.dumps({
-        "company": company_data,
-        "5yr_metrics_table": metrics["yearly"],
+        "company": safe_company,
+        "5yr_metrics_table": safe_metrics.get("yearly", []),
         "senior_indicators": {
-            "revenue_cagr": f"{metrics['revenue_cagr_pct']}%",
-            "revenue_trajectory": metrics["revenue_trajectory"],
-            "margin_signal": metrics["margin_signal"],
-            "solvency_signal": metrics["solvency_signal"],
-            "current_z_score": metrics["current_z_score"],
-            "current_roe": f"{metrics['current_roe']}%",
-            "current_dso": metrics["current_dso"],
-            "current_inventory_turnover": metrics["current_inventory_turnover"],
-            "current_fcf_conversion": f"{metrics['current_fcf_conversion_pct']}%",
-            "debt_trajectory": metrics["debt_signal"]
+            "revenue_cagr": f"{safe_metrics.get('revenue_cagr_pct', 0)}%",
+            "revenue_trajectory": safe_metrics.get("revenue_trajectory", "STABLE"),
+            "margin_signal": safe_metrics.get("margin_signal", "STABLE"),
+            "solvency_signal": safe_metrics.get("solvency_signal", "SAFE"),
+            "current_z_score": safe_metrics.get("current_z_score", 0),
+            "current_roe": f"{safe_metrics.get('current_roe', 0)}%",
+            "current_dso": safe_metrics.get("current_dso", 0),
+            "current_inventory_turnover": safe_metrics.get("current_inventory_turnover", 0),
+            "current_fcf_conversion": f"{safe_metrics.get('current_fcf_conversion_pct', 0)}%",
+            "debt_trajectory": safe_metrics.get("debt_signal", "STABLE")
         },
         "recent_news": search_results or []
     }, indent=2)
@@ -98,9 +102,9 @@ Return ONLY the JSON object."""
         analysis = {"analysis_raw": raw_text}
 
     return {
-        "company_name":       company_data["company_name"],
-        "raw_inputs":         company_data,
-        "calculated_metrics": metrics,
+        "company_name":       safe_company.get("company_name", "Unknown"),
+        "raw_inputs":         safe_company,
+        "calculated_metrics": safe_metrics,
         "search_results":     search_results,
         "analysis":           analysis,
     }

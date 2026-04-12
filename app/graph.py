@@ -59,12 +59,9 @@ def build_graph() -> CompiledStateGraph:
     builder.add_node("search_web", search_web_node)
     builder.add_node("run_agent", run_agent_node)
 
-    # Parallel Execution: Start both nodes at once
+    # Sequential execution to ensure all state fields are populated
     builder.add_edge(START, "calculate_metrics")
-    builder.add_edge(START, "search_web")
-
-    # Join: Both must finish before the AI starts
-    builder.add_edge("calculate_metrics", "run_agent")
+    builder.add_edge("calculate_metrics", "search_web")
     builder.add_edge("search_web", "run_agent")
     builder.add_edge("run_agent", END)
 

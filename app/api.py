@@ -100,8 +100,8 @@ def derive_color_signal(z_score: float) -> str:
     return "RED"
 
 
-def default_retail_verdict(analysis: dict, color_signal: str) -> str:
-    if analysis.get("retail_verdict"):
+def default_retail_verdict(analysis: dict | None, color_signal: str) -> str:
+    if analysis and analysis.get("retail_verdict"):
         return analysis["retail_verdict"]
     if color_signal == "GREEN":
         return "Financial profile is resilient and lower risk."
@@ -110,7 +110,7 @@ def default_retail_verdict(analysis: dict, color_signal: str) -> str:
     return "Mixed fundamentals. Position size with caution."
 
 
-def build_response_payload(ticker: str, company_name: str, metrics: dict, analysis: dict) -> dict:
+def build_response_payload(ticker: str, company_name: str, metrics: dict | None, analysis: dict | None) -> dict:
     safe_metrics = dict(metrics or {})
     z_score_raw = safe_metrics.get("current_z_score")
     if z_score_raw is None:
@@ -121,6 +121,7 @@ def build_response_payload(ticker: str, company_name: str, metrics: dict, analys
             z_score_raw = 2.1
         else:
             z_score_raw = 1.2
+    
     color_signal = derive_color_signal(float(z_score_raw or 0.0))
     normalized_analysis = dict(analysis or {})
     flags = normalized_analysis.get("flags", [])
@@ -128,17 +129,21 @@ def build_response_payload(ticker: str, company_name: str, metrics: dict, analys
         normalized_analysis["flags"] = []
     else:
         normalized_analysis["flags"] = flags
+    
     normalized_analysis["retail_verdict"] = default_retail_verdict(normalized_analysis, color_signal)
+    
     return {
-        "ticker": ticker.upper(),
-        "company_name": company_name,
+        "ticker": ticker.upper() if ticker else "UNKNOWN",
+        "company_name": company_name or "Unknown",
         "metrics": safe_metrics,
         "analysis": normalized_analysis,
         "color_signal": color_signal,
     }
 
 
-def score_for_comparison(payload: dict) -> float:
+def score_for_comparison(payload: dict | None) -> float:
+    if not payload:
+        return 0.0
     metrics = dict(payload.get("metrics", {}) or {})
     z_score = float(metrics.get("current_z_score", 0.0) or 0.0)
     cagr = float(metrics.get("revenue_cagr_pct", 0.0) or 0.0)
@@ -394,13 +399,13 @@ async def run_analysis_for_ticker(
         except Exception:
             if manual_data:
                 raise
-            metrics = record.get("data", {}).get("metrics", {}) if record else {}
+            metrics = (record.get("data") or {}).get("metrics") or {} if record else {}
 
         if manual_data:
             analysis = fallback_analysis_from_metrics(metrics)
         else:
             analysis = (
-                (record.get("data", {}).get("analysis", {}) if record else {})
+                ((record.get("data") or {}).get("analysis") or {} if record else {})
                 or fallback_analysis_from_metrics(metrics)
             )
 
@@ -417,14 +422,18 @@ async def run_analysis_for_ticker(
             response_payload["scorecard_error"] = str(scorecard_err)
         return response_payload
 
+    final_state: dict = {}
     try:
-        final_state = await asyncio.wait_for(
+        raw_final_state = await asyncio.wait_for(
             asyncio.to_thread(graph.invoke, initial_state),
             timeout=GRAPH_TIMEOUT_SECONDS,
         )
-        result = final_state.get("analysis_result", {}) or {}
-        analysis = result.get("analysis", {}) or {}
-        metrics = final_state.get("metrics", {}) or {}
+        final_state = dict(raw_final_state or {})
+        
+        result = dict(final_state.get("analysis_result") or {})
+        analysis = dict(result.get("analysis") or {})
+        metrics = dict(final_state.get("metrics") or {})
+        
         response_payload = build_response_payload(resolved_ticker, company_name, metrics, analysis)
 
         scorecard_inputs = None
@@ -465,8 +474,8 @@ async def run_analysis_for_ticker(
         from app.calculator import calculate_metrics
 
         if manual_data:
-            fallback_metrics = calculate_metrics(manual_data["historical_data"])
-            fallback_analysis = fallback_analysis_from_metrics(fallback_metrics)
+            fallback_metrics = dict(calculate_metrics(manual_data["historical_data"]) or {})
+            fallback_analysis = dict(fallback_analysis_from_metrics(fallback_metrics) or {})
             response_payload = build_response_payload(
                 resolved_ticker, company_name, fallback_metrics, fallback_analysis
             )
@@ -486,20 +495,20 @@ async def run_analysis_for_ticker(
 
         # record may be None for dynamically-fetched tickers — guard against it
         if record:
-            seed_metrics = record.get("data", {}).get("metrics", {}) or {}
+            seed_metrics = dict((record.get("data") or {}).get("metrics") or {})
             seed_yearly = seed_metrics.get("yearly", [])
             try:
-                fallback_metrics = calculate_metrics(seed_yearly)
+                fallback_metrics = dict(calculate_metrics(seed_yearly) or {})
             except Exception:
                 fallback_metrics = seed_metrics
-            fallback_analysis = record.get("data", {}).get("analysis", {}) or fallback_analysis_from_metrics(fallback_metrics)
+            fallback_analysis = dict((record.get("data") or {}).get("analysis") or fallback_analysis_from_metrics(fallback_metrics))
         else:
             # Dynamic ticker — use the historical_data we already fetched
             try:
-                fallback_metrics = calculate_metrics(historical_data)
+                fallback_metrics = dict(calculate_metrics(historical_data) or {})
             except Exception:
                 fallback_metrics = {}
-            fallback_analysis = fallback_analysis_from_metrics(fallback_metrics)
+            fallback_analysis = dict(fallback_analysis_from_metrics(fallback_metrics) or {})
 
         response_payload = build_response_payload(
             resolved_ticker, company_name, fallback_metrics, fallback_analysis
@@ -516,6 +525,20 @@ async def run_analysis_for_ticker(
             )
         except Exception as scorecard_err:
             response_payload["scorecard_error"] = str(scorecard_err)
+
+        if save_history and db:
+            try:
+                analysis_history = AnalysisHistory(
+                    ticker=resolved_ticker.upper(),
+                    company_name=company_name,
+                    archetype=response_payload["analysis"].get("analyst_verdict_archetype", "UNKNOWN"),
+                    analysis_data=final_state if final_state else {"fallback": True},
+                )
+                db.add(analysis_history)
+                await db.commit()
+            except Exception as db_err:
+                print(f"Failed to save fallback history: {db_err}")
+
         return response_payload
 
 @app.get("/api/analyze/stream")

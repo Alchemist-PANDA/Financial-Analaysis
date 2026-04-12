@@ -5,7 +5,9 @@ No AI here — just math. Takes raw company data and returns
 a dict of computed ratios used by the agent for analysis.
 """
 
-def numeric_value(data: dict, key: str, default: float | None = 0.0) -> float | None:
+def numeric_value(data: dict | None, key: str, default: float | None = 0.0) -> float | None:
+    if data is None:
+        return default
     value = data.get(key, default)
     if value is None:
         return default

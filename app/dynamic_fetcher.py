@@ -11,18 +11,29 @@ def fetch_historical_data_sync(ticker_symbol: str) -> Optional[Tuple[str, list]]
     try:
         stock = yf.Ticker(ticker_symbol)
         
-        # We need Income Statement, Balance Sheet, and Cash Flow
-        income = stock.financials
-        balance = stock.balance_sheet
-        cashflow = stock.cashflow
+        # [ROBUSTNESS] Try multiple properties as yfinance version/ticker type varies
+        income = getattr(stock, "income_stmt", None)
+        if income is None or income.empty:
+            income = getattr(stock, "financials", None)
+            
+        balance = getattr(stock, "balance_sheet", None)
+        cashflow = getattr(stock, "cashflow", None)
         
         # If the ticker does not exist or has no financials, return None
         if income is None or income.empty:
+            # Try one more time with a slightly different ticker if it looks like an ADR
+            if "." not in ticker_symbol and len(ticker_symbol) <= 4:
+                 # No-op for now, but could try appending .T or others
+                 pass
             return None
 
         # stock.info can be None for invalid/delisted/rate-limited tickers
-        stock_info = stock.info if isinstance(stock.info, dict) else {}
-        company_name = stock_info.get("shortName", ticker_symbol)
+        try:
+            stock_info = stock.info if isinstance(stock.info, dict) else {}
+        except Exception:
+            stock_info = {}
+            
+        company_name = stock_info.get("shortName") or stock_info.get("longName") or ticker_symbol
         
         # Fill missing with 0 temporarily for math, but check bounds carefully
         inc = income.fillna(0)
@@ -45,10 +56,16 @@ def fetch_historical_data_sync(ticker_symbol: str) -> Optional[Tuple[str, list]]
             # Find nearest date column
             try:
                 target_ts = pd.Timestamp(target_col)
-                nearest = min(df.columns, key=lambda c: abs((pd.Timestamp(c) - target_ts).days))
-                # Only use if within 6 months of the target
-                if abs((pd.Timestamp(nearest) - target_ts).days) <= 180:
-                    return nearest
+                # Ensure columns are timestamps
+                df_cols = [pd.Timestamp(c) for c in df.columns]
+                nearest_ts = min(df_cols, key=lambda c: abs((c - target_ts).days))
+                
+                # Find the original column name that matches this timestamp
+                for original_col in df.columns:
+                    if pd.Timestamp(original_col) == nearest_ts:
+                        # Only use if within 6 months of the target
+                        if abs((nearest_ts - target_ts).days) <= 180:
+                            return original_col
             except Exception:
                 pass
             return None
@@ -68,7 +85,14 @@ def fetch_historical_data_sync(ticker_symbol: str) -> Optional[Tuple[str, list]]
                     return 0.0
                 for k in keys:
                     if k in df.index:
-                        return float(df.loc[k, col_to_use]) / m
+                        val = df.loc[k, col_to_use]
+                        # Handle cases where loc returns a Series (duplicate index)
+                        if isinstance(val, pd.Series):
+                            val = val.iloc[0]
+                        try:
+                            return float(val) / m
+                        except (TypeError, ValueError):
+                            continue
                 return 0.0
 
             # --- Income Statement ---

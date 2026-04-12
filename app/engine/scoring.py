@@ -92,7 +92,7 @@ def aggregate_health_score(sub_scores: dict, mode: str = "credit") -> dict:
     for pillar, pillar_weight in weights.items():
         if pillar_weight == 0:
             continue
-        raw = sub_scores.get(pillar, {}).get("score", 0)
+        raw = (sub_scores.get(pillar) or {}).get("score", 0)
         max_raw = pillar_maxes.get(pillar, 25)
         normalized = (raw / max(max_raw, 0.001)) * 100
         weighted_score += (normalized * pillar_weight) / total_weight

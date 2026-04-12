@@ -84,7 +84,7 @@ class FinancialReportBuilder:
         elements.append(Spacer(1, 0.3 * inch))
 
         # ── VERDICT SECTION ───────────────────────────────────────────────────
-        analysis = self.analysis_data.get("analysis_result", {}).get("analysis", {})
+        analysis = (self.analysis_data.get("analysis_result") or {}).get("analysis") or {}
         archetype = analysis.get("analyst_verdict_archetype", "UNKNOWN")
         
         elements.append(Paragraph(f"SENIOR PARTNER VERDICT: {archetype}", self.styles['VerdictHeader']))
