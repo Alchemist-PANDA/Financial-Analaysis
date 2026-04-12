@@ -83,6 +83,7 @@ type MainTerminalProps = {
     forceTicker?: string | null;
     onAnalysisComplete?: () => void;
     onDataLoaded?: (data: MetricsPayload) => void;
+    onTickerChange?: (ticker: string) => void;
 };
 
 const formatMetric = (value: number | undefined, suffix = '', precision = 1): string => {
@@ -265,6 +266,7 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded }: MainTer
         }
 
         setTicker(resolvedTicker);
+        onTickerChange?.(resolvedTicker);
         const streamUrl = `${BASE_URL}/api/analyze/stream?ticker=${encodeURIComponent(resolvedTicker)}`;
         const eventSource = new EventSource(streamUrl);
         eventSourceRef.current = eventSource;

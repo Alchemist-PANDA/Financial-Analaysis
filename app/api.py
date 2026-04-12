@@ -132,9 +132,13 @@ def detect_signals(ticker: str, history_df: Any, news: list) -> dict:
     }
 
 def generate_chart_explanation(ticker: str, signals: dict) -> dict:
+    import json
+    import requests
+    from config import GROQ_API_KEY, MODEL_NAME
+    
+    # 1. Base rule-based explanation as fallback
     parts = []
     confidence = 0.1
-    
     pc = signals["price_change"]
     direction = "up" if pc > 0 else "down"
     
@@ -155,22 +159,70 @@ def generate_chart_explanation(ticker: str, signals: dict) -> dict:
         parts.append(f"breaking {'above' if pc > 0 else 'below'} key {signals['technical']['pattern']} levels")
         confidence += 0.2
 
-    explanation = ". ".join(parts).capitalize()
+    base_explanation = ". ".join(parts).capitalize()
     if len(parts) > 1:
-        explanation = ", ".join(parts[:-1]) + ", and " + parts[-1]
+        base_explanation = ", ".join(parts[:-1]) + ", and " + parts[-1]
+
+    # 2. AI Enhancement using Groq
+    ai_explanation = base_explanation
+    if GROQ_API_KEY:
+        try:
+            prompt = f"""You are a Senior Institutional Analyst. Explain why {ticker} moved {pc:.1f}% given these signals:
+- News: {json.dumps(signals['news'])}
+- Volume: {json.dumps(signals['volume'])}
+- Technical: {json.dumps(signals['technical'])}
+
+Write a concise, professional 1-sentence institutional verdict (max 30 words).
+Use terms like 'catalyst-driven', 'institutional accumulation', 'resistance breach', or 'momentum exhaustion'.
+Be brutally direct. Cite the price change of {pc:.1f}%."""
+
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": MODEL_NAME,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_tokens": 100
+                },
+                timeout=5
+            )
+            if response.ok:
+                ai_explanation = response.json()["choices"][0]["message"]["content"].strip().strip('"')
+        except Exception as e:
+            print(f"[AI EXPLAIN ERROR] {e}")
 
     return {
         "ticker": ticker,
         "price_change": pc,
-        "explanation": explanation,
+        "explanation": ai_explanation,
         "confidence": min(confidence, 1.0),
         "timestamp": datetime.now().isoformat(),
         "signals": signals
     }
 
+# --- Caching Layer ---
+_chart_cache = {}
+
+def get_from_cache(key: str):
+    import time
+    entry = _chart_cache.get(key)
+    if entry and (time.time() - entry['timestamp'] < 300): # 5 minutes
+        return entry['data']
+    return None
+
+def set_to_cache(key: str, data: Any):
+    import time
+    _chart_cache[key] = {'timestamp': time.time(), 'data': data}
+
 @app.get("/api/explain-chart")
 async def explain_chart(ticker: str):
     import yfinance as yf
+    
+    cache_key = f"explain_{ticker.upper()}"
+    cached = get_from_cache(cache_key)
+    if cached: return cached
+
     try:
         t = yf.Ticker(ticker)
         hist = t.history(period="30d")
@@ -182,7 +234,9 @@ async def explain_chart(ticker: str):
         except: pass
         
         signals = detect_signals(ticker, hist, news)
-        return generate_chart_explanation(ticker, signals)
+        result = generate_chart_explanation(ticker, signals)
+        set_to_cache(cache_key, result)
+        return result
     except HTTPException: raise
     except Exception as e:
         print(f"[API ERROR] {e}")
@@ -191,6 +245,11 @@ async def explain_chart(ticker: str):
 @app.get("/api/timeline-markers")
 async def timeline_markers(ticker: str):
     import yfinance as yf
+    
+    cache_key = f"markers_{ticker.upper()}"
+    cached = get_from_cache(cache_key)
+    if cached: return cached
+
     try:
         t = yf.Ticker(ticker)
         hist = t.history(period="60d")
@@ -210,6 +269,7 @@ async def timeline_markers(ticker: str):
                     "price": round(float(curr), 2),
                     "icon": "⚡" if day_pc > 0 else "🚨"
                 })
+        set_to_cache(cache_key, markers)
         return markers
     except: return []
 

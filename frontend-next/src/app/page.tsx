@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import ComparisonTerminal from "@/components/ComparisonTerminal";
 import ChartIntelligence from "@/components/ChartIntelligence";
+import AlertsPanel from "@/components/AlertsPanel";
 import MetricsPanel, { type FinancialData } from "@/components/MetricsPanel";
 import ComparisonBoard from "@/components/ComparisonBoard";
 import { FEATURES } from "@/config/features";
@@ -131,13 +132,17 @@ export default function Home() {
               forceTicker={selectedTicker}
               onAnalysisComplete={handleAnalysisComplete}
               onDataLoaded={handleDataLoaded}
+              onTickerChange={setSelectedTicker}
             />
           )}
           {currentView === 'compare' && (
             <ComparisonTerminal />
           )}
           {currentView === 'intelligence' && (
-            <ChartIntelligence ticker={selectedTicker || "AAPL"} />
+            <>
+              <ChartIntelligence ticker={selectedTicker || "AAPL"} />
+              <AlertsPanel />
+            </>
           )}
         </div>
 

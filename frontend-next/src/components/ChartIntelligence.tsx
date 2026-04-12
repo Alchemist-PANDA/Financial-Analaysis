@@ -26,17 +26,27 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
 
     const BASE_URL = (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7860').replace(/\\n/g, '').trim();
 
+    const [markers, setMarkers] = useState<any[]>([]);
+
     const fetchIntelligence = async (symbol: string) => {
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${BASE_URL}/api/explain-chart?ticker=${symbol}`);
-            if (!res.ok) {
-                const data = await res.json();
+            const [intelRes, markersRes] = await Promise.all([
+                fetch(`${BASE_URL}/api/explain-chart?ticker=${symbol}`),
+                fetch(`${BASE_URL}/api/timeline-markers?ticker=${symbol}`)
+            ]);
+            
+            if (!intelRes.ok) {
+                const data = await intelRes.json();
                 throw new Error(data.detail || 'Intelligence engine unavailable');
             }
-            const data = await res.json();
-            setIntelligence(data);
+            
+            const intelData = await intelRes.json();
+            const markersData = await markersRes.json();
+            
+            setIntelligence(intelData);
+            setMarkers(Array.isArray(markersData) ? markersData : []);
         } catch (err: any) {
             setError(err.message || 'Unable to generate AI chart analysis');
         } finally {
@@ -44,7 +54,7 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
         }
     };
 
-    const loadChart = (symbol: string) => {
+    const loadChart = (symbol: string, chartMarkers: any[]) => {
         if (window.TradingView && containerRef.current) {
             containerRef.current.innerHTML = ''; // Clear previous
             const child = document.createElement('div');
@@ -52,6 +62,10 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
             child.style.height = '100%';
             containerRef.current.appendChild(child);
 
+            // Construct markings/shapes for TradingView
+            // Note: Standard widget has limited support for programmatic shapes without Advanced Charting Library
+            // but we can use 'details' and 'calendar' to enrich the view.
+            
             new window.TradingView.widget({
                 "container_id": child.id,
                 "autosize": true,
@@ -77,8 +91,13 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
 
     useEffect(() => {
         fetchIntelligence(ticker);
-        loadChart(ticker);
     }, [ticker]);
+
+    useEffect(() => {
+        if (!isLoading) {
+            loadChart(ticker, markers);
+        }
+    }, [isLoading, ticker, markers]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -149,70 +168,82 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
-                    padding: 16px;
+                    padding: 24px;
                     height: 100%;
                     overflow-y: auto;
-                    background: #0f172a;
+                    background: var(--bg-surface);
                 }
                 .intel-header {
-                    padding: 8px 0;
+                    display: flex;
+                    justify-content: flex-end;
+                    margin-bottom: 8px;
                 }
                 .search-form {
                     display: flex;
-                    gap: 8px;
+                    gap: 0;
                 }
                 .ticker-input {
-                    background: #1e293b;
-                    border: 1px solid #334155;
-                    color: white;
+                    background: var(--bg-elevated);
+                    border: 1px solid var(--border);
+                    color: var(--text-primary);
                     padding: 8px 12px;
                     font-family: var(--font-mono);
                     font-size: 13px;
                     width: 200px;
+                    outline: none;
+                }
+                .ticker-input:focus {
+                    border-color: var(--primary);
                 }
                 .search-btn {
-                    background: #0ea5e9;
+                    background: linear-gradient(135deg,#2563EB,#1D4ED8);
                     color: white;
                     border: none;
                     padding: 0 16px;
                     font-size: 11px;
                     font-weight: 700;
                     cursor: pointer;
+                    text-transform: uppercase;
+                }
+                .search-btn:hover {
+                    background: linear-gradient(135deg,#1D4ED8,#1E40AF);
                 }
                 .explanation-card {
-                    background: #1e293b;
-                    border-left: 4px solid #0ea5e9;
-                    padding: 16px;
-                    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+                    background: var(--bg-surface);
+                    border: 1px solid var(--border);
+                    border-left: 4px solid var(--primary);
+                    padding: 20px;
+                    box-shadow: var(--shadow-sm);
                 }
                 .title-row {
                     display: flex;
                     align-items: center;
-                    gap: 10px;
-                    margin-bottom: 8px;
+                    gap: 12px;
+                    margin-bottom: 12px;
                 }
                 .title-row h3 {
-                    font-size: 12px;
+                    font-size: 13px;
                     font-weight: 700;
                     letter-spacing: 0.05em;
-                    color: #94a3b8;
+                    color: var(--primary);
                     margin: 0;
+                    text-transform: uppercase;
                 }
                 .confidence-badge {
-                    font-size: 9px;
+                    font-size: 10px;
                     font-weight: 800;
                     color: white;
-                    padding: 2px 8px;
-                    border-radius: 9999px;
+                    padding: 3px 10px;
+                    border-radius: 4px;
                 }
                 .explanation-text {
-                    font-size: 14px;
+                    font-size: 15px;
                     line-height: 1.6;
-                    color: #f1f5f9;
+                    color: var(--text-primary);
                     margin: 0;
                 }
                 .loading-text {
-                    color: #64748b;
+                    color: var(--text-muted);
                     font-size: 13px;
                     font-style: italic;
                 }
@@ -223,8 +254,8 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
                 .chart-wrapper {
                     flex: 1;
                     min-height: 550px;
-                    border: 1px solid #334155;
-                    background: #0f172a;
+                    border: 1px solid var(--border);
+                    background: white;
                 }
             `}</style>
         </div>
