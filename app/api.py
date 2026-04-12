@@ -813,9 +813,46 @@ async def get_scorecard_history(db: AsyncSession = Depends(get_db)):
         return []
 
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-frontend_path = os.path.join(os.getcwd(), "frontend-next", "out")
-if os.path.exists(frontend_path):
+# Multi-path detection for Hugging Face/Docker environments
+potential_paths = [
+    os.path.join(os.getcwd(), "frontend-next", "out"),
+    os.path.join(os.getcwd(), "out"),
+    "/app/frontend-next/out"
+]
+
+frontend_path = None
+for p in potential_paths:
+    if os.path.exists(p) and os.path.exists(os.path.join(p, "index.html")):
+        frontend_path = p
+        break
+
+@app.get("/api/debug/paths")
+async def debug_paths():
+    import os
+    results = {}
+    for p in potential_paths:
+        exists = os.path.exists(p)
+        results[p] = {
+            "exists": exists,
+            "is_dir": os.path.isdir(p) if exists else False,
+            "contents": os.listdir(p) if exists and os.path.isdir(p) else []
+        }
+    results["cwd"] = os.getcwd()
+    return results
+
+if frontend_path:
+    print(f"[*] Serving frontend from: {frontend_path}")
+    # Mount static files at the very end
     app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 else:
-    print(f"WARN: Frontend path {frontend_path} not found. UI will not be served.")
+    print(f"WARN: Frontend 'out' directory not found in: {potential_paths}")
+
+# Final catch-all for SPA routing (only if frontend_path exists)
+@app.exception_handler(404)
+async def custom_404_handler(request, __):
+    if frontend_path and not request.url.path.startswith("/api"):
+        return FileResponse(os.path.join(frontend_path, "index.html"))
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
