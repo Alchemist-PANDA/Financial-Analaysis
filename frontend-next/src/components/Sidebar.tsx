@@ -12,8 +12,8 @@ type HistoryItem = {
 type SidebarProps = {
     onSelectTicker: (ticker: string) => void;
     refreshTrigger?: number;
-    currentView: 'live' | 'compare';
-    onViewChange: (view: 'live' | 'compare') => void;
+    currentView: 'live' | 'compare' | 'intelligence';
+    onViewChange: (view: 'live' | 'compare' | 'intelligence') => void;
 };
 
 const Sidebar = ({ onSelectTicker, refreshTrigger, currentView, onViewChange }: SidebarProps) => {
@@ -70,6 +70,12 @@ const Sidebar = ({ onSelectTicker, refreshTrigger, currentView, onViewChange }: 
                         onClick={() => onViewChange('live')}
                     >
                         Live Analysis
+                    </button>
+                    <button
+                        className={`sidebar-btn ${currentView === 'intelligence' ? 'sidebar-btn-active' : ''}`}
+                        onClick={() => onViewChange('intelligence')}
+                    >
+                        📊 Chart Intel
                     </button>
                     <button
                         className={`sidebar-btn ${currentView === 'compare' ? 'sidebar-btn-active' : ''}`}

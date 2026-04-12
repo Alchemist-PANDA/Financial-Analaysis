@@ -5,6 +5,7 @@ import MainTerminal, { type MetricsPayload as TerminalMetricsPayload } from "@/c
 import { useState } from "react";
 
 import ComparisonTerminal from "@/components/ComparisonTerminal";
+import ChartIntelligence from "@/components/ChartIntelligence";
 import MetricsPanel, { type FinancialData } from "@/components/MetricsPanel";
 import ComparisonBoard from "@/components/ComparisonBoard";
 import { FEATURES } from "@/config/features";
@@ -64,7 +65,7 @@ const EMPTY_FINANCIAL_DATA: FinancialData = {
 export default function Home() {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [currentView, setCurrentView] = useState<'live' | 'compare'>('live');
+  const [currentView, setCurrentView] = useState<'live' | 'compare' | 'intelligence'>('live');
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
 
   const handleAnalysisComplete = () => {
@@ -125,14 +126,18 @@ export default function Home() {
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowY: 'auto' }}>
         <div style={{ flexShrink: 0 }}>
-          {currentView === 'live' ? (
+          {currentView === 'live' && (
             <MainTerminal
               forceTicker={selectedTicker}
               onAnalysisComplete={handleAnalysisComplete}
               onDataLoaded={handleDataLoaded}
             />
-          ) : (
+          )}
+          {currentView === 'compare' && (
             <ComparisonTerminal />
+          )}
+          {currentView === 'intelligence' && (
+            <ChartIntelligence ticker={selectedTicker || "AAPL"} />
           )}
         </div>
 

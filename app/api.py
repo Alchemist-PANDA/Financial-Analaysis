@@ -90,7 +90,126 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Analysis Helper ──────────────────────────────────────────────────────────
+# ── Chart Intelligence Logic ──────────────────────────────────────────────────
+
+def detect_signals(ticker: str, history_df: Any, news: list) -> dict:
+    import pandas as pd
+    if history_df.empty or len(history_df) < 2:
+        return {"news": None, "volume": None, "technical": None, "price_change": 0}
+
+    # 1. Price Change
+    latest_close = history_df['Close'].iloc[-1]
+    prev_close = history_df['Close'].iloc[-2]
+    price_change = ((latest_close / prev_close) - 1) * 100
+
+    # 2. News Detection
+    IMPACT_KEYWORDS = ["earnings", "beat", "miss", "merger", "fda", "lawsuit", "ceo", "guidance", "acquisition"]
+    news_signal = None
+    for item in news:
+        headline = item.get("title", "").lower()
+        if any(kw in headline for kw in IMPACT_KEYWORDS):
+            news_signal = {"has_news": True, "headline": item.get("title"), "event": "Catalyst Detected"}
+            break
+
+    # 3. Volume Detection (20-day avg)
+    avg_vol = history_df['Volume'].iloc[:-1].mean()
+    current_vol = history_df['Volume'].iloc[-1]
+    vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1
+    volume_signal = {
+        "volume_spike": vol_ratio > 1.8,
+        "ratio": round(vol_ratio, 2),
+        "explanation": "Unusually high volume" if vol_ratio > 2.0 else "Normal volume"
+    }
+
+    # 4. Technical Detection (20-day breakout)
+    lookback = history_df.iloc[-21:-1] if len(history_df) > 21 else history_df.iloc[:-1]
+    res_level = lookback['High'].max()
+    sup_level = lookback['Low'].min()
+    
+    technical_signal = None
+    if latest_close > res_level * 1.001:
+        technical_signal = {"pattern": "breakout", "level": round(res_level, 2)}
+    elif latest_close < sup_level * 0.999:
+        technical_signal = {"pattern": "breakdown", "level": round(sup_level, 2)}
+
+    return {
+        "news": news_signal,
+        "volume": volume_signal,
+        "technical": technical_signal,
+        "price_change": round(price_change, 2)
+    }
+
+def generate_chart_explanation(ticker: str, signals: dict) -> dict:
+    parts = []
+    confidence = 0.1
+    
+    pc = signals["price_change"]
+    direction = "up" if pc > 0 else "down"
+    
+    if signals["news"]:
+        parts.append(f"Stock {direction} {abs(pc)}% following news: '{signals['news']['headline']}'")
+        confidence += 0.5
+    elif abs(pc) > 2.5:
+        parts.append(f"Stock {direction} {abs(pc)}% on significant momentum")
+        confidence += 0.2
+    else:
+        parts.append(f"Stock showing stable movement ({pc}%)")
+
+    if signals["volume"]["volume_spike"]:
+        parts.append(f"supported by {signals['volume']['ratio']}x average volume indicating institutional activity")
+        confidence += 0.3
+    
+    if signals["technical"]:
+        parts.append(f"breaking {'above' if pc > 0 else 'below'} key {signals['technical']['pattern']} levels")
+        confidence += 0.2
+
+    explanation = ". ".join(parts).capitalize()
+    if len(parts) > 1:
+        explanation = ", ".join(parts[:-1]) + ", and " + parts[-1]
+
+    return {
+        "ticker": ticker,
+        "price_change": pc,
+        "explanation": explanation,
+        "confidence": min(confidence, 1.0),
+        "timestamp": datetime.now().isoformat(),
+        "signals": signals
+    }
+
+@app.get("/api/explain-chart")
+async def explain_chart(ticker: str):
+    import yfinance as yf
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period="30d")
+        news = t.news[:5]
+        
+        signals = detect_signals(ticker, hist, news)
+        return generate_chart_explanation(ticker, signals)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/timeline-markers")
+async def timeline_markers(ticker: str):
+    import yfinance as yf
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period="60d")
+        markers = []
+        
+        for i in range(1, len(hist)):
+            day_pc = ((hist['Close'].iloc[i] / hist['Close'].iloc[i-1]) - 1) * 100
+            if abs(day_pc) > 3.5:
+                markers.append({
+                    "date": hist.index[i].strftime("%Y-%m-%d"),
+                    "type": "momentum",
+                    "price_change": round(day_pc, 2),
+                    "price": round(hist['Close'].iloc[i], 2),
+                    "icon": "⚡" if day_pc > 0 else "🚨"
+                })
+        return markers
+    except Exception as e:
+        return []
 
 def derive_color_signal(z_score: float) -> str:
     if z_score > 2.99:
