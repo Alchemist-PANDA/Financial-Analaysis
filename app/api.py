@@ -812,4 +812,10 @@ async def get_scorecard_history(db: AsyncSession = Depends(get_db)):
     except Exception:
         return []
 
-# app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+from fastapi.staticfiles import StaticFiles
+
+frontend_path = os.path.join(os.getcwd(), "frontend-next", "out")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+else:
+    print(f"WARN: Frontend path {frontend_path} not found. UI will not be served.")
