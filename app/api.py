@@ -460,7 +460,7 @@ async def analyze_stream(ticker: str, db: AsyncSession = Depends(get_db)):
                 yield f"data: {json.dumps({'type':'result','payload': early_payload})}\n\n"
             
             # Stage 2: Parallel Full Analysis (Covers fetching + news + AI in one go)
-            result = await run_analysis_for_ticker(ticker, db)
+            result = await run_analysis_for_ticker(ticker=ticker, db=db)
             yield f"data: {json.dumps({'type':'result','payload': result})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type':'error','message': f'Analysis failed: {str(e)}'})}\n\n"
