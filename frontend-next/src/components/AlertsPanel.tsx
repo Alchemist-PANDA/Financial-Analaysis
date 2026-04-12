@@ -14,7 +14,11 @@ const AlertsPanel = () => {
     const [newTicker, setNewTicker] = useState('');
     const [isChecking, setIsChecking] = useState(false);
 
-    const BASE_URL = (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7860').replace(/\\n/g, '').trim();
+    // Direct link to backend to bypass Vercel proxy issues
+    const BACKEND_PROD_URL = "https://ghouri112-financial-terminal-backend.hf.space";
+    const BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('github.dev'))) 
+        ? BACKEND_PROD_URL 
+        : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7860').replace(/\\n/g, '').trim();
 
     useEffect(() => {
         const saved = localStorage.getItem('terminal_watchlist');

@@ -24,7 +24,11 @@ const ChartIntelligence = ({ ticker: initialTicker }: { ticker: string }) => {
     const [error, setError] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const BASE_URL = (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7860').replace(/\\n/g, '').trim();
+    // Direct link to backend to bypass Vercel proxy issues
+    const BACKEND_PROD_URL = "https://ghouri112-financial-terminal-backend.hf.space";
+    const BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('github.dev'))) 
+        ? BACKEND_PROD_URL 
+        : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7860').replace(/\\n/g, '').trim();
 
     const [markers, setMarkers] = useState<any[]>([]);
 

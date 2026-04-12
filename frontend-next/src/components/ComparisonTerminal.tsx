@@ -61,7 +61,13 @@ const ComparisonTerminal = () => {
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<ComparePayload | null>(null);
 
-    const BASE_URL = (typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7860')).replace(/\\n/g, '').trim();
+    // Direct link to backend to bypass Vercel proxy issues
+    const BACKEND_PROD_URL = "https://ghouri112-financial-terminal-backend.hf.space";
+    const BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('github.dev'))) 
+        ? BACKEND_PROD_URL 
+        : (typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7860')).replace(/\\n/g, '').trim();
+    
+    const API_KEY = (process.env.NEXT_PUBLIC_API_KEY || 'dev_default_key').replace(/\\n/g, '').trim();
 
     const runComparison = async () => {
         const left = tickerA.trim().toUpperCase();
