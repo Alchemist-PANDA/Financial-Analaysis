@@ -11,11 +11,138 @@ from config import GROQ_API_KEY, MODEL_NAME, MAX_TOKENS
 from app.engine.narrative import build_narrative_prompt, validate_narrative
 
 
+def _extract_json_object(text: str) -> str | None:
+    """
+    Best-effort extraction when the model returns extra text around JSON.
+    Keeps things simple to avoid introducing new dependencies.
+    """
+
+    if not text:
+        return None
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < 0 or end <= start:
+        return None
+    return text[start : end + 1]
+
+
+def _fallback_analysis(company: dict, metrics: dict, reason: str) -> dict:
+    ticker = str(company.get("ticker") or "").upper() or "UNKNOWN"
+    z = metrics.get("current_z_score")
+    try:
+        z_val = float(z) if z is not None else 0.0
+    except Exception:
+        z_val = 0.0
+
+    archetype = "DISTRESSED" if z_val and z_val < 1.8 else "TRANSITION"
+    flags = [
+        {
+            "emoji": "!",
+            "name": "LLM Fallback",
+            "explanation": f"AI narrative unavailable ({reason}).",
+        }
+    ]
+    if z is not None:
+        flags.append(
+            {
+                "emoji": "Z",
+                "name": "Altman Z-Score",
+                "explanation": f"Current Z-Score: {z_val:.2f} for {ticker}.",
+            }
+        )
+
+    return {
+        "pattern_diagnosis": (
+            f"DIAGNOSIS: FALLBACK MODE for {ticker}. "
+            "The AI narrative generator failed, so this result is based on deterministic metrics only. "
+            "Retry later for a full institutional narrative."
+        ),
+        "flags": flags,
+        "analyst_verdict_archetype": archetype,
+        "analyst_verdict_summary": (
+            "Automated fallback summary. Validate key financial statements and rerun analysis when the AI engine is available."
+        ),
+        "retail_verdict": "AI offline; metrics only.",
+    }
+
+
+def _normalize_analysis_payload(payload: dict) -> dict:
+    """
+    Ensure the analysis payload matches the frontend contract:
+      - keys exist
+      - analyst_verdict_archetype is a string (not a list)
+      - pattern_diagnosis is a string (not an object)
+      - flags is a list of objects
+    """
+
+    if not isinstance(payload, dict):
+        return {}
+
+    # Some model failures wrap everything under "analysis"
+    if isinstance(payload.get("analysis"), dict) and any(
+        k in payload["analysis"]
+        for k in (
+            "pattern_diagnosis",
+            "flags",
+            "analyst_verdict_archetype",
+            "analyst_verdict_summary",
+            "retail_verdict",
+        )
+    ):
+        merged = dict(payload.get("analysis") or {})
+        # Keep top-level archetype if present (some generations put it outside).
+        if "analyst_verdict_archetype" in payload and "analyst_verdict_archetype" not in merged:
+            merged["analyst_verdict_archetype"] = payload.get("analyst_verdict_archetype")
+        payload = merged
+
+    diagnosis = payload.get("pattern_diagnosis")
+    if isinstance(diagnosis, dict):
+        payload["pattern_diagnosis"] = json.dumps(diagnosis, ensure_ascii=True)
+    elif diagnosis is None:
+        payload["pattern_diagnosis"] = "No diagnosis available."
+    else:
+        payload["pattern_diagnosis"] = str(diagnosis)
+
+    flags = payload.get("flags")
+    if not isinstance(flags, list):
+        payload["flags"] = []
+    else:
+        cleaned = []
+        for item in flags:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            explanation = item.get("explanation")
+            if not name or not explanation:
+                continue
+            cleaned.append(
+                {
+                    "emoji": str(item.get("emoji") or ""),
+                    "name": str(name),
+                    "explanation": str(explanation),
+                }
+            )
+        payload["flags"] = cleaned
+
+    archetype = payload.get("analyst_verdict_archetype")
+    if isinstance(archetype, list):
+        archetype = archetype[0] if archetype else "TRANSITION"
+    if not isinstance(archetype, str) or not archetype.strip():
+        archetype = "TRANSITION"
+    payload["analyst_verdict_archetype"] = archetype
+
+    summary = payload.get("analyst_verdict_summary")
+    payload["analyst_verdict_summary"] = str(summary) if summary is not None else "No summary available."
+
+    retail = payload.get("retail_verdict")
+    payload["retail_verdict"] = str(retail) if retail is not None else "No retail verdict."
+
+    return payload
+
+
 def run_snapshot_agent(company_data: dict | None, metrics: dict | None, search_results: list = None) -> dict:
     """Call Groq and return a structured institutional-grade financial trend analysis."""
-
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY is not set.")
 
     # Guard against None inputs from the graph
     safe_company = dict(company_data or {})
@@ -65,41 +192,56 @@ You are a Senior Institutional Partner & Global Head of Equities. Your mandate i
 {data_summary}
 
 ## OUTPUT FORMAT — JSON STRICT
-Return a valid JSON object with these EXACT keys:
+Return ONLY a JSON object matching this schema (double quotes required):
+{{
+  "pattern_diagnosis": "string",
+  "flags": [{{"emoji": "string", "name": "string", "explanation": "string"}}],
+  "analyst_verdict_archetype": "string",
+  "analyst_verdict_summary": "string",
+  "retail_verdict": "string"
+}}
+"""
 
-pattern_diagnosis: (4-6 sentences) Start with the diagnosis (e.g. "DIAGNOSIS: THE CANNIBAL"). Explain exactly which forensic metrics (DSO, FCF, Z-Score) justify this verdict.
-flags: (List of objects) {{"emoji", "name", "explanation"}}. Focus on "Red Flags" (e.g., Hidden Leverage, Working Capital Bloat) or "Green Lights" (e.g., Capital Efficiency).
-analyst_verdict_archetype: [COMPOUNDER, VALUE TRAP, THE CANNIBAL, CAPITAL DESTROYER, ASSET-LIGHT FLYER, DISTRESSED]
-analyst_verdict_summary: (One aggressive paragraph) Senior Partner tone. What is the #1 structural risk? Should an institutional fund hold this?
-retail_verdict: (MAX 10 WORDS) A simple "Credit Karma" style sentence for retail investors. (e.g., "Safe dividend powerhouse with pristine assets" or "High-risk zombie company burning cash fast").
+    analysis: dict
 
-Return ONLY the JSON object."""
+    # If Groq isn't configured, keep the system usable with a deterministic fallback.
+    if not GROQ_API_KEY:
+        analysis = _fallback_analysis(safe_company, safe_metrics, reason="missing GROQ_API_KEY")
+    else:
+        try:
+            from groq import Groq
 
-    from groq import Groq
-    client = Groq(api_key=GROQ_API_KEY)
+            client = Groq(api_key=GROQ_API_KEY)
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                max_tokens=MAX_TOKENS,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return ONLY a valid JSON object. No markdown. No code fences. "
+                            "Use double quotes for all keys and string values."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+            )
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        max_tokens=MAX_TOKENS,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a senior equity research analyst. Always respond with valid JSON only. No extra text. No hedging."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        response_format={"type": "json_object"},
-    )
+            raw_text = (response.choices[0].message.content or "").strip()
+            try:
+                analysis = json.loads(raw_text)
+            except Exception:
+                extracted = _extract_json_object(raw_text)
+                if extracted:
+                    analysis = json.loads(extracted)
+                else:
+                    analysis = _fallback_analysis(safe_company, safe_metrics, reason="invalid JSON from model")
+                    analysis["analysis_raw"] = raw_text[:2000]
+        except Exception as e:
+            analysis = _fallback_analysis(safe_company, safe_metrics, reason=str(e))
 
-    raw_text = (response.choices[0].message.content or "").strip()
-
-    try:
-        analysis = json.loads(raw_text)
-    except Exception:
-        analysis = {"analysis_raw": raw_text}
+    analysis = _normalize_analysis_payload(analysis)
 
     return {
         "company_name":       safe_company.get("company_name", "Unknown"),
@@ -195,3 +337,46 @@ def generate_scorecard_narrative(result: dict) -> str:
             print("WARN: Narrative failed validation (missing numbers). Retrying...")
 
     return "[AUTO-GENERATED - verify numbers] " + narrative
+
+
+def generate_chart_intel_verdict(ticker: str, price_change: float, signals: dict) -> str:
+    """
+    Optional LLM enhancement for Chart Intelligence.
+
+    Note: All AI calls must live in this module (see AGENTS.md hard rule #1).
+    """
+
+    if not GROQ_API_KEY:
+        return ""
+
+    # Keep the payload lean to reduce serialization surprises.
+    safe_signals = {
+        "price_change": float(price_change),
+        "news": signals.get("news"),
+        "volume": signals.get("volume"),
+        "technical": signals.get("technical"),
+    }
+
+    prompt = (
+        f"You are a Senior Institutional Analyst. Explain why {ticker.upper()} moved "
+        f"{price_change:.1f}% given these signals:\n{json.dumps(safe_signals, indent=2)}\n\n"
+        "Write ONE concise sentence (max 30 words). Be direct. Use terms like "
+        "'catalyst-driven', 'institutional accumulation', 'resistance breach', or "
+        "'momentum exhaustion'. Include the % move explicitly."
+    )
+
+    client = get_llm_client()
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        max_tokens=min(MAX_TOKENS, 120),
+        messages=[
+            {
+                "role": "system",
+                "content": "Return a single sentence only. No JSON. No quotes. No extra text.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+
+    return (response.choices[0].message.content or "").strip().strip('"')

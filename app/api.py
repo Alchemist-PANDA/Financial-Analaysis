@@ -32,7 +32,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 import asyncio
 from app.calculator import numeric_value
 from app.engine.orchestrator import run_full_analysis
-from app.agent import generate_scorecard_narrative
+from app.agent import generate_scorecard_narrative, generate_chart_intel_verdict
 
 GRAPH_TIMEOUT_SECONDS = float(os.getenv("GRAPH_TIMEOUT_SECONDS", "45"))
 
@@ -139,9 +139,7 @@ def detect_signals(ticker: str, history_df: Any, news: list) -> dict:
     }
 
 def generate_chart_explanation(ticker: str, signals: dict) -> dict:
-    import json
-    import requests
-    from config import GROQ_API_KEY, MODEL_NAME
+    from config import GROQ_API_KEY
     
     # 1. Base rule-based explanation as fallback
     parts = []
@@ -170,44 +168,13 @@ def generate_chart_explanation(ticker: str, signals: dict) -> dict:
     if len(parts) > 1:
         base_explanation = ", ".join(parts[:-1]) + ", and " + parts[-1]
 
-    # 2. AI Enhancement using Groq
+    # 2. AI Enhancement (must call via app/agent.py)
     ai_explanation = base_explanation
     if GROQ_API_KEY:
         try:
-            # Create a serializable copy of signals
-            serializable_signals = {
-                "news": signals.get("news"),
-                "volume": {
-                    "volume_spike": bool(signals["volume"]["volume_spike"]),
-                    "ratio": float(signals["volume"]["ratio"]),
-                    "explanation": str(signals["volume"]["explanation"])
-                } if signals.get("volume") else None,
-                "technical": signals.get("technical"),
-                "price_change": float(signals["price_change"])
-            }
-            
-            prompt = f"""You are a Senior Institutional Analyst. Explain why {ticker} moved {pc:.1f}% given these signals:
-- News: {json.dumps(serializable_signals['news'])}
-- Volume: {json.dumps(serializable_signals['volume'])}
-- Technical: {json.dumps(serializable_signals['technical'])}
-
-Write a concise, professional 1-sentence institutional verdict (max 30 words).
-Use terms like 'catalyst-driven', 'institutional accumulation', 'resistance breach', or 'momentum exhaustion'.
-Be brutally direct. Cite the price change of {pc:.1f}%."""
-
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={
-                    "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
-                    "max_tokens": 100
-                },
-                timeout=5
-            )
-            if response.ok:
-                ai_explanation = response.json()["choices"][0]["message"]["content"].strip().strip('"')
+            enhanced = generate_chart_intel_verdict(ticker=ticker, price_change=float(pc), signals=signals)
+            if enhanced:
+                ai_explanation = enhanced
         except Exception as e:
             print(f"[AI EXPLAIN ERROR] {e}")
 
@@ -361,7 +328,22 @@ def build_response_payload(ticker: str, company_name: str, metrics: dict | None,
     
     color_signal = derive_color_signal(float(z_score_raw or 0.0))
     normalized_analysis = dict(analysis or {})
-    normalized_analysis["flags"] = normalized_analysis.get("flags", [])
+
+    # Contract hardening for the Next.js frontend.
+    flags = normalized_analysis.get("flags", [])
+    normalized_analysis["flags"] = flags if isinstance(flags, list) else []
+
+    archetype = normalized_analysis.get("analyst_verdict_archetype")
+    if isinstance(archetype, list):
+        archetype = archetype[0] if archetype else "TRANSITION"
+    if not isinstance(archetype, str) or not archetype.strip():
+        archetype = "TRANSITION"
+    normalized_analysis["analyst_verdict_archetype"] = archetype
+
+    diag = normalized_analysis.get("pattern_diagnosis")
+    if isinstance(diag, dict):
+        normalized_analysis["pattern_diagnosis"] = json.dumps(diag, cls=NumpyEncoder)
+
     normalized_analysis["retail_verdict"] = default_retail_verdict(normalized_analysis, color_signal)
     
     return {
@@ -372,23 +354,378 @@ def build_response_payload(ticker: str, company_name: str, metrics: dict | None,
         "color_signal": color_signal,
     }
 
-async def run_analysis_for_ticker(ticker: str, manual_data: dict = None, db: AsyncSession = None) -> dict:
+def score_for_comparison(payload: dict | None) -> float:
+    if not payload:
+        return 0.0
+    metrics = dict(payload.get("metrics", {}) or {})
+    z_score = float(metrics.get("current_z_score", 0.0) or 0.0)
+    cagr = float(metrics.get("revenue_cagr_pct", 0.0) or 0.0)
+    fcf = float(metrics.get("current_fcf_conversion_pct", 0.0) or 0.0)
+    roe = float(metrics.get("current_roe", 0.0) or 0.0)
+    dso = float(metrics.get("current_dso", 0.0) or 0.0)
+    return (z_score * 4.0) + (cagr * 0.8) + (fcf * 0.2) + (roe * 0.15) - (max(dso - 60.0, 0.0) * 0.15)
+
+
+def build_comparison_verdict(left: dict, right: dict) -> dict:
+    left_score = score_for_comparison(left)
+    right_score = score_for_comparison(right)
+    if left_score >= right_score:
+        winner = left.get("ticker", "LEFT")
+        loser = right.get("ticker", "RIGHT")
+    else:
+        winner = right.get("ticker", "RIGHT")
+        loser = left.get("ticker", "LEFT")
+    return {
+        "winner": winner,
+        "summary": f"{winner} shows the stronger blended solvency/cash-quality profile versus {loser}.",
+    }
+
+
+def to_number(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def pick_number(data: dict, *keys: str, default: float = 0.0) -> float:
+    for key in keys:
+        value = numeric_value(data, key, None)
+        if value is not None:
+            return to_number(value, default)
+    return default
+
+
+def build_scorecard_inputs_from_history(
+    company_name: str,
+    historical_data: list[dict],
+    scoring_mode: str = "credit",
+    data_source: str = "ticker",
+) -> dict:
+    latest = historical_data[-1] if historical_data else {}
+    prior = historical_data[-2] if len(historical_data) > 1 else {}
+
+    revenue = pick_number(latest, "revenue")
+    ebitda = pick_number(latest, "ebitda")
+    net_income = pick_number(latest, "net_income")
+    total_debt = pick_number(latest, "debt", "total_debt")
+    cash = pick_number(latest, "cash", "cash_equivalents")
+    total_assets = pick_number(latest, "total_assets")
+    total_equity = pick_number(latest, "equity", "total_equity")
+    market_cap = pick_number(latest, "market_value_equity", "market_cap")
+    cogs_raw = numeric_value(latest, "cogs", None)
+    cogs = to_number(cogs_raw, 0.0)
+
+    # Provide both latest and prior to enable deltas/CAGR where present.
+    return {
+        "company_name": company_name,
+        "revenue": revenue,
+        "ebitda": ebitda,
+        "net_income": net_income,
+        "interest_expense": pick_number(latest, "interest_expense"),
+        "total_debt": total_debt,
+        "cash_equivalents": cash,
+        "total_assets": total_assets,
+        "current_assets": pick_number(latest, "current_assets"),
+        "current_liabilities": pick_number(latest, "current_liabilities"),
+        "short_term_debt": pick_number(latest, "short_term_debt"),
+        "gross_profit": revenue - cogs if cogs_raw is not None else pick_number(latest, "gross_profit", default=0.0),
+        "cfo": pick_number(latest, "cfo"),
+        "capex": pick_number(latest, "capex"),
+        "accounts_receivable": pick_number(latest, "accounts_receivable"),
+        "inventory": pick_number(latest, "inventory"),
+        "accounts_payable": pick_number(latest, "accounts_payable"),
+        "cogs": cogs,
+        "market_cap": market_cap,
+        "retained_earnings": pick_number(latest, "retained_earnings", default=net_income),
+        "working_capital": pick_number(latest, "working_capital"),
+        "total_equity": total_equity,
+        "tax_rate": pick_number(latest, "tax_rate", default=0.25),
+        "revenue_prior": pick_number(prior, "revenue"),
+        "ebitda_prior": pick_number(prior, "ebitda"),
+        "net_income_prior": pick_number(prior, "net_income"),
+        "total_debt_prior": pick_number(prior, "debt", "total_debt"),
+        "cash_prior": pick_number(prior, "cash", "cash_equivalents"),
+        "total_equity_prior": pick_number(prior, "equity", "total_equity"),
+        "cfo_prior": pick_number(prior, "cfo"),
+        "fcf_prior": pick_number(prior, "fcf"),
+        "working_capital_prior": pick_number(prior, "working_capital"),
+        "revenue_cagr_years": 3,
+        "data_source": data_source,
+        "scoring_mode": scoring_mode,
+    }
+
+
+def run_scorecard_analysis(inputs: dict, mode: str = "credit") -> dict:
+    result = dict(run_full_analysis(inputs, mode=mode) or {})
+    narrative = ""
+    narrative_error = ""
+    try:
+        narrative = generate_scorecard_narrative(result)
+    except Exception as e:
+        narrative_error = str(e)
+    if narrative:
+        result["narrative"] = narrative
+    if narrative_error:
+        result["narrative_error"] = narrative_error
+    return result
+
+
+async def persist_scorecard_result(db: AsyncSession, inputs: dict, result: dict) -> ScorecardAnalysis:
+    record = ScorecardAnalysis(
+        company_name=result.get("company_name", inputs.get("company_name", "Unknown")),
+        scoring_mode=result.get("scoring_mode", inputs.get("scoring_mode", "credit")),
+        scoring_model_version=result.get("scoring_model_version", "unknown"),
+        health_score=int(result.get("health_score", 0) or 0),
+        health_band=str(result.get("health_band", "Unknown")),
+        inputs_data=inputs,
+        result_data=result,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+async def run_analysis_for_ticker(
+    ticker: str,
+    manual_data: dict | None = None,
+    db: AsyncSession | None = None,
+    save_history: bool = True,
+    include_scorecard: bool = True,
+) -> dict:
+    company = dict((manual_data or {}).get("company") or {})
+    company_name = company.get("company_name") or ticker
     initial_state = {
-        "company_data": {"ticker": ticker, "company_name": ticker},
-        "historical_data": manual_data["historical_data"] if manual_data else None,
+        "company_data": {"ticker": ticker, "company_name": company_name},
+        "historical_data": (manual_data or {}).get("historical_data"),
         "metrics": None,
         "search_query": f"{ticker} news",
         "search_results": [],
         "analysis_result": None,
     }
+
     try:
         final_state = await asyncio.wait_for(graph.ainvoke(initial_state), timeout=GRAPH_TIMEOUT_SECONDS)
-        metrics = final_state.get("metrics") or {}
-        analysis = (final_state.get("analysis_result") or {}).get("analysis") or {}
-        return build_response_payload(ticker, ticker, metrics, analysis)
+        company_data = dict(final_state.get("company_data") or {})
+        resolved_name = company_data.get("company_name") or company_name or ticker
+        resolved_ticker = company_data.get("ticker") or ticker
+
+        metrics = dict(final_state.get("metrics") or {})
+        analysis = dict((final_state.get("analysis_result") or {}).get("analysis") or {})
+        payload = build_response_payload(resolved_ticker, resolved_name, metrics, analysis)
+
+        if include_scorecard:
+            try:
+                historical = list(final_state.get("historical_data") or [])
+                if historical:
+                    inputs = build_scorecard_inputs_from_history(
+                        company_name=resolved_name,
+                        historical_data=historical,
+                        scoring_mode="credit",
+                        data_source="manual" if manual_data else "ticker",
+                    )
+                    scorecard = run_scorecard_analysis(inputs, mode="credit")
+                    payload["scorecard"] = scorecard
+                    if db and save_history:
+                        record = await persist_scorecard_result(db, inputs, scorecard)
+                        scorecard["analysis_id"] = record.id
+            except Exception as scorecard_err:
+                payload["scorecard_error"] = str(scorecard_err)
+
+        if db and save_history:
+            try:
+                archetype = str((payload.get("analysis") or {}).get("analyst_verdict_archetype", "UNKNOWN"))
+                safe_payload = sanitize_for_json(payload)
+                history = AnalysisHistory(
+                    ticker=str(resolved_ticker or ticker).upper(),
+                    company_name=str(resolved_name or company_name or ticker),
+                    archetype=archetype,
+                    analysis_data=safe_payload,
+                )
+                db.add(history)
+                await db.commit()
+            except Exception as db_err:
+                print(f"[HISTORY SAVE ERROR] {db_err}")
+
+        return payload
     except Exception as e:
         print(f"[PARALLEL GRAPH ERROR] {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── API Models ──────────────────────────────────────────────────────────────
+
+class HistoricalYear(BaseModel):
+    year: str
+    revenue: float
+    ebitda: float
+    net_income: float
+    cash: float
+    debt: float
+    total_assets: Optional[float] = None
+    equity: Optional[float] = None
+    working_capital: Optional[float] = None
+    retained_earnings: Optional[float] = None
+    ebit: Optional[float] = None
+    market_value_equity: Optional[float] = None
+    accounts_receivable: Optional[float] = None
+    inventory: Optional[float] = None
+    capex: Optional[float] = None
+    cogs: Optional[float] = None
+    interest_expense: Optional[float] = None
+    current_assets: Optional[float] = None
+    current_liabilities: Optional[float] = None
+
+
+class CompanyData(BaseModel):
+    company_name: str
+    sector: Optional[str] = "Unknown"
+    ticker: Optional[str] = "CUSTOM"
+
+
+class AnalysisRequest(BaseModel):
+    company: CompanyData
+    historical_data: List[HistoricalYear] = Field(
+        ..., min_length=1, description="Historical financial data (prefer 5 years Y-4 through Y0)."
+    )
+
+
+class ScorecardRequest(BaseModel):
+    company_name: str
+    scoring_mode: str = "credit"
+    data_source: Optional[str] = "manual"
+
+    revenue: float
+    ebitda: float
+    net_income: float
+    interest_expense: float = 0.0
+    total_debt: float
+    cash_equivalents: float
+    total_assets: float
+    current_assets: float = 0.0
+    current_liabilities: float = 0.0
+
+    short_term_debt: Optional[float] = 0.0
+    gross_profit: Optional[float] = None
+    cfo: Optional[float] = None
+    capex: Optional[float] = None
+    accounts_receivable: Optional[float] = None
+    inventory: Optional[float] = None
+    accounts_payable: Optional[float] = None
+    cogs: Optional[float] = None
+    market_cap: Optional[float] = None
+    ev: Optional[float] = None
+    retained_earnings: Optional[float] = None
+    total_equity: Optional[float] = None
+    tax_rate: Optional[float] = None
+
+    revenue_prior: Optional[float] = None
+    ebitda_prior: Optional[float] = None
+    net_income_prior: Optional[float] = None
+    total_debt_prior: Optional[float] = None
+    cash_prior: Optional[float] = None
+    total_equity_prior: Optional[float] = None
+    cfo_prior: Optional[float] = None
+    fcf_prior: Optional[float] = None
+    working_capital: Optional[float] = None
+    working_capital_prior: Optional[float] = None
+    revenue_cagr_years: Optional[int] = 3
+
+
+@app.post("/api/analyze")
+async def analyze_company(request: AnalysisRequest, db: AsyncSession = Depends(get_db)):
+    payload_dict: dict[str, Any] = {
+        "company": request.company.model_dump(),
+        "historical_data": [year.model_dump() for year in request.historical_data],
+    }
+    ticker = (request.company.ticker or "CUSTOM").strip().upper()
+    return await run_analysis_for_ticker(
+        ticker=ticker,
+        manual_data=payload_dict,
+        db=db,
+        save_history=True,
+        include_scorecard=True,
+    )
+
+
+@app.post("/api/scorecard/analyze")
+async def analyze_scorecard(request: ScorecardRequest, db: AsyncSession = Depends(get_db)):
+    inputs = request.model_dump(exclude_none=True)
+    mode = str(inputs.pop("scoring_mode", "credit") or "credit")
+    inputs.setdefault("data_source", request.data_source or "manual")
+    result = run_scorecard_analysis(inputs, mode=mode)
+    record = await persist_scorecard_result(db, inputs, result)
+    result["analysis_id"] = record.id
+    return sanitize_for_json(result)
+
+
+@app.get("/api/scorecard/history")
+async def get_scorecard_history(db: AsyncSession = Depends(get_db)):
+    try:
+        res = await db.execute(
+            select(ScorecardAnalysis).order_by(ScorecardAnalysis.created_at.desc()).limit(10)
+        )
+        history = res.scalars().all()
+        return [
+            {
+                "id": h.id,
+                "company_name": h.company_name,
+                "health_score": h.health_score,
+                "health_band": h.health_band,
+                "scoring_mode": h.scoring_mode,
+                "scoring_model_version": h.scoring_model_version,
+                "created_at": h.created_at,
+                "result": h.result_data,
+                "inputs": h.inputs_data,
+            }
+            for h in history
+        ]
+    except Exception as e:
+        print(f"[SCORECARD HISTORY ERROR] {e}")
+        return JSONResponse({"detail": "Scorecard history currently unavailable."}, status_code=500)
+
+
+@app.get("/api/compare")
+async def compare_tickers(ticker_a: str, ticker_b: str):
+    left, right = await asyncio.gather(
+        run_analysis_for_ticker(ticker_a, db=None, save_history=False, include_scorecard=False),
+        run_analysis_for_ticker(ticker_b, db=None, save_history=False, include_scorecard=False),
+    )
+    return {"left": left, "right": right, "verdict": build_comparison_verdict(left, right)}
+
+
+@app.get("/api/export/pdf")
+async def export_pdf(ticker: str, db: AsyncSession = Depends(get_db)):
+    from app.reporter import generate_financial_pdf
+
+    requested = (ticker or "").strip().upper()
+    if not requested:
+        raise HTTPException(status_code=400, detail="ticker is required")
+
+    res = await db.execute(
+        select(AnalysisHistory)
+        .where(AnalysisHistory.ticker == requested)
+        .order_by(AnalysisHistory.created_at.desc())
+        .limit(1)
+    )
+    analysis_record = res.scalars().first()
+    if not analysis_record:
+        raise HTTPException(status_code=404, detail=f"No analysis history found for ticker: {requested}")
+
+    pdf_buffer = generate_financial_pdf(
+        analysis_record.ticker,
+        analysis_record.company_name,
+        analysis_record.analysis_data,
+    )
+    filename = f"Analyst_Report_{requested}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 @app.get("/api/analyze/stream")
 async def analyze_stream(ticker: str, db: AsyncSession = Depends(get_db)):
