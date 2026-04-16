@@ -29,6 +29,9 @@ COPY .env.example .
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /app/frontend-next/out ./frontend-next/out
 
+# Ensure the app directory is writable (for SQLite/Logs)
+RUN chmod -R 777 /app
+
 # Expose Hugging Face port
 EXPOSE 7860
 
