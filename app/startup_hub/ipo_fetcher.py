@@ -50,6 +50,7 @@ def _source_domain(url: str | None) -> str | None:
 
 def load_ipo_seed_companies() -> list[dict[str, Any]]:
     if not _IPO_SEED_PATH.exists():
+        print(f"[SEED ERROR] IPO seed file not found at: {_IPO_SEED_PATH}")
         return []
     payload = json.loads(_IPO_SEED_PATH.read_text(encoding="utf-8"))
     items = payload.get("items") or []

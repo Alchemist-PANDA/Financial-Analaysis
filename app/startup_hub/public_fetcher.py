@@ -76,6 +76,7 @@ def _source_domain(url: str | None) -> str | None:
 
 def load_public_seed_companies() -> list[dict[str, Any]]:
     if not _PUBLIC_SEED_PATH.exists():
+        print(f"[SEED ERROR] Public startups seed file not found at: {_PUBLIC_SEED_PATH}")
         return []
     payload = json.loads(_PUBLIC_SEED_PATH.read_text(encoding="utf-8"))
     items = payload.get("items") or []

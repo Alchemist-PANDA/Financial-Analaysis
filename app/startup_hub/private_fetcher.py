@@ -59,6 +59,7 @@ def _source_domain(url: str | None) -> str | None:
 
 def load_private_opportunity_seed() -> list[dict[str, Any]]:
     if not _PRIVATE_SEED_PATH.exists():
+        print(f"[SEED ERROR] Private opportunities seed file not found at: {_PRIVATE_SEED_PATH}")
         return []
     payload = json.loads(_PRIVATE_SEED_PATH.read_text(encoding="utf-8"))
     items = payload.get("items") or []

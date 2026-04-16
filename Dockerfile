@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend application code
 COPY app ./app
+COPY data ./data
 COPY config.py .
 COPY .env.example .
 
