@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-15T00:00:00Z",
+  "entity_type": "private_opportunity",
+  "items": [
+    {
+      "slug": "lattice-vision-systems",
+      "company_name": "Lattice Vision Systems",
+      "sector": "Computer Vision",
+      "stage": "Series B",
+      "status_label": "research_only",
+      "summary": "Fictional starter private-company record for source-transparency and research-only UI flows.",
+      "verification_level": "unverified",
+      "research_only": true,
+      "valuation_usd": null,
+      "minimum_investment_usd": null,
+      "official_source_url": null,
+      "source_name": null,
+      "seed_notes": "Schema-only seed entry. Not tradable and not a verified offer.",
+      "source_items": []
+    },
+    {
+      "slug": "atlas-bio-platforms",
+      "company_name": "Atlas Bio Platforms",
+      "sector": "Biotech Infrastructure",
+      "stage": "Series A",
+      "status_label": "research_only",
+      "summary": "Fictional starter private opportunity record to validate null-handling in later phases.",
+      "verification_level": "partial",
+      "research_only": true,
+      "valuation_usd": null,
+      "minimum_investment_usd": null,
+      "official_source_url": null,
+      "source_name": null,
+      "seed_notes": "Schema-only seed entry. Official source verification is intentionally absent.",
+      "source_items": []
+    }
+  ]
+}

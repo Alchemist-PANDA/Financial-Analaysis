@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-15T00:00:00Z",
+  "entity_type": "public_stock",
+  "items": [
+    {
+      "slug": "duolingo",
+      "company_name": "Duolingo",
+      "ticker": "DUOL",
+      "exchange": "NASDAQ",
+      "sector": "Education Technology",
+      "status_label": "active",
+      "summary": "Consumer subscription language-learning platform with software-led growth.",
+      "verification_level": "verified_public",
+      "research_only": true,
+      "seed_notes": "Starter public example for ticker-based analysis reuse.",
+      "source_items": [
+        {
+          "source_name": "Duolingo Investor Relations",
+          "source_type": "investor_relations",
+          "source_url": "https://investors.duolingo.com/",
+          "is_official": true
+        }
+      ]
+    },
+    {
+      "slug": "c3-ai",
+      "company_name": "C3.ai",
+      "ticker": "AI",
+      "exchange": "NYSE",
+      "sector": "Enterprise AI",
+      "status_label": "active",
+      "summary": "Enterprise AI software vendor with public-market operating history.",
+      "verification_level": "verified_public",
+      "research_only": true,
+      "seed_notes": "Public AI example for deterministic ranking inputs later.",
+      "source_items": [
+        {
+          "source_name": "C3.ai Investor Relations",
+          "source_type": "investor_relations",
+          "source_url": "https://ir.c3.ai/",
+          "is_official": true
+        }
+      ]
+    },
+    {
+      "slug": "hims-hers-health",
+      "company_name": "Hims & Hers Health",
+      "ticker": "HIMS",
+      "exchange": "NYSE",
+      "sector": "Digital Health",
+      "status_label": "active",
+      "summary": "Consumer health platform with subscription, telehealth, and pharmacy exposure.",
+      "verification_level": "verified_public",
+      "research_only": true,
+      "seed_notes": "Digital health public example for the Startup Hub starter dataset.",
+      "source_items": [
+        {
+          "source_name": "Hims & Hers Investor Relations",
+          "source_type": "investor_relations",
+          "source_url": "https://investors.hims.com/",
+          "is_official": true
+        }
+      ]
+    }
+  ]
+}

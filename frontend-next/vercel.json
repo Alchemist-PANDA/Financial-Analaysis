@@ -1,0 +1,11 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://ghouri112-financial-terminal-backend.hf.space/api/:path*"
+    }
+  ]
+}

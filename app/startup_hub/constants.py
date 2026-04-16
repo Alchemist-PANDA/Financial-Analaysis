@@ -1,0 +1,64 @@
+"""Startup Hub constants and defaults."""
+
+ENTITY_TYPE_PUBLIC_STOCK = "public_stock"
+ENTITY_TYPE_IPO_WATCH = "ipo_watch"
+ENTITY_TYPE_PRIVATE_OPPORTUNITY = "private_opportunity"
+ENTITY_TYPES = (
+    ENTITY_TYPE_PUBLIC_STOCK,
+    ENTITY_TYPE_IPO_WATCH,
+    ENTITY_TYPE_PRIVATE_OPPORTUNITY,
+)
+
+VERIFICATION_LEVEL_VERIFIED_PUBLIC = "verified_public"
+VERIFICATION_LEVEL_VERIFIED_IPO = "verified_ipo"
+VERIFICATION_LEVEL_SOURCE_VERIFIED_PRIVATE = "source_verified_private"
+VERIFICATION_LEVEL_PARTIAL = "partial"
+VERIFICATION_LEVEL_UNVERIFIED = "unverified"
+VERIFICATION_LEVELS = (
+    VERIFICATION_LEVEL_VERIFIED_PUBLIC,
+    VERIFICATION_LEVEL_VERIFIED_IPO,
+    VERIFICATION_LEVEL_SOURCE_VERIFIED_PRIVATE,
+    VERIFICATION_LEVEL_PARTIAL,
+    VERIFICATION_LEVEL_UNVERIFIED,
+)
+
+STARTUP_HUB_DISCLAIMERS = [
+    "Research only.",
+    "Not investment advice.",
+    "Verify details with official sources.",
+]
+
+RANKING_SCORE_MIN = 0.0
+RANKING_SCORE_MAX = 100.0
+RANKING_SCORE_DEFAULT = 0.0
+RANKING_COMPONENT_DEFAULT = 0.0
+RANKING_DEFAULTS = {
+    "min_score": RANKING_SCORE_MIN,
+    "max_score": RANKING_SCORE_MAX,
+    "default_score": RANKING_SCORE_DEFAULT,
+    "default_component_score": RANKING_COMPONENT_DEFAULT,
+    "weights": {
+        "growth": 0.30,
+        "quality": 0.25,
+        "risk": 0.20,
+        "verification": 0.15,
+        "momentum": 0.10,
+    },
+}
+
+STALE_THRESHOLD_SECONDS = {
+    ENTITY_TYPE_PUBLIC_STOCK: 60 * 60 * 12,
+    ENTITY_TYPE_IPO_WATCH: 60 * 60 * 24,
+    ENTITY_TYPE_PRIVATE_OPPORTUNITY: 60 * 60 * 24 * 7,
+    "home_payload": 60 * 30,
+    "company_detail": 60 * 15,
+    "company_list": 60 * 10,
+}
+
+DEFAULT_PAGE = 1
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+DEFAULT_COMPARE_LIMIT = 2
+DEFAULT_AGENT_MATCH_LIMIT = 5
+
+PLACEHOLDER_LAST_UPDATED = "2026-04-15T00:00:00Z"

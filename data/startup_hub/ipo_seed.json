@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-15T00:00:00Z",
+  "entity_type": "ipo_watch",
+  "items": [
+    {
+      "slug": "northstar-robotics",
+      "company_name": "Northstar Robotics",
+      "sector": "Industrial Automation",
+      "stage": "Pre-IPO",
+      "status_label": "watchlist_candidate",
+      "summary": "Fictional starter record used to model IPO-watch data structure without asserting live filing facts.",
+      "verification_level": "unverified",
+      "research_only": true,
+      "proposed_exchange": null,
+      "expected_window": null,
+      "seed_notes": "Schema-only seed entry. Not a claim of an actual filing.",
+      "source_items": []
+    },
+    {
+      "slug": "harbor-cloud-security",
+      "company_name": "Harbor Cloud Security",
+      "sector": "Cybersecurity",
+      "stage": "Pre-IPO",
+      "status_label": "research_watchlist",
+      "summary": "Fictional starter record for IPO Watch completeness and status fields.",
+      "verification_level": "partial",
+      "research_only": true,
+      "proposed_exchange": null,
+      "expected_window": null,
+      "seed_notes": "Schema-only seed entry. No external filing data connected yet.",
+      "source_items": []
+    }
+  ]
+}
