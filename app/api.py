@@ -53,18 +53,29 @@ from app.startup_hub.tasks import (
     seed_startup_hub_data as startup_hub_seed_all,
 )
 
+from fastapi.security import APIKeyHeader, APIKeyQuery
+
 # ── APP SECURITY ─────────────────────────────────────────────────────────────
 
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "dev_default_key")
 
-if API_SECRET_KEY == "dev_default_key" and os.getenv("RENDER"):
-    print("\n[WARNING] Using default API key in production environment!\n")
-
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+api_key_query = APIKeyQuery(name="api_key", auto_error=False)
 
-async def get_api_key(api_key_header: str = Security(api_key_header)):
-    if api_key_header == API_SECRET_KEY:
-        return api_key_header
+async def get_api_key(
+    header_key: Optional[str] = Security(api_key_header),
+    query_key: Optional[str] = Security(api_key_query)
+):
+    # Check header first, then query param
+    key = header_key or query_key
+
+    if key == API_SECRET_KEY:
+        return key
+
+    # Debug log (will show up in HF logs)
+    if os.getenv("DEBUG"):
+        print(f"[AUTH] Validation failed. Provided: {key}, Expected: {API_SECRET_KEY}")
+
     raise HTTPException(status_code=403, detail="Could not validate API key")
 
 GRAPH_TIMEOUT_SECONDS = float(os.getenv("GRAPH_TIMEOUT_SECONDS", "45"))

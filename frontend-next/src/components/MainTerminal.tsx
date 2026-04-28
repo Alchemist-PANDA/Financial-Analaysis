@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { getApiBaseUrl, getApiKey, safeFetch } from '@/utils/api';
+import { getApiBaseUrl, getApiKey, safeFetch, wakeupBackend } from '@/utils/api';
 import ManualEntryModal from './ManualEntryModal';
 import { FEATURES } from '@/config/features';
 import ScorecardPanel from '@/components/MetricsPanel/Scorecard/ScorecardPanel';
@@ -224,7 +224,12 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded, onTickerC
             'Running forensic engine',
         ]);
 
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+
         try {
+            await wakeupBackend();
+
             const response = await safeFetch(`${BASE_URL}/api/analyze`, {
                 method: 'POST',
                 headers: {
@@ -232,7 +237,8 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded, onTickerC
                     'X-API-Key': API_KEY,
                 },
                 body: JSON.stringify(payload),
-            });
+                signal: controller.signal,
+            }, 3);
 
             if (!response.success) {
                 throw new Error(response.error);
@@ -253,6 +259,7 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded, onTickerC
             const message = err instanceof Error ? err.message : 'Network error during manual analysis.';
             setError(message);
         } finally {
+            window.clearTimeout(timeoutId);
             finalizeAnalysis();
         }
     }, [API_KEY, BASE_URL, finalizeAnalysis, onDataLoaded]);
@@ -285,13 +292,17 @@ const MainTerminal = ({ forceTicker, onAnalysisComplete, onDataLoaded, onTickerC
         setProgress([formatProgress('Requesting analysis...')]);
 
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 3000);
+        // Increase timeout to 120s for analysis (cold start + compute)
+        const timeoutId = window.setTimeout(() => controller.abort(), 120000);
 
         try {
+            // Wake up backend before critical request
+            await wakeupBackend();
+
             const response = await safeFetch(analysisUrl, {
                 headers: { 'X-API-Key': API_KEY },
                 signal: controller.signal,
-            });
+            }, 3); // Allow 3 internal retries in safeFetch
 
             if (!response.success) {
                 throw new Error(response.error);
